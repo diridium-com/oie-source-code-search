@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: MPL-2.0 -->
+<!-- Copyright (c) 2025-2026 Diridium Technologies Inc. -->
+
+<pluginMetaData path="oie-source-code-search">
+    <name>OIE Source Code Search</name>
+    <author>Diridium Technologies Inc.</author>
+    <pluginVersion>${project.version}</pluginVersion>
+    <mirthVersion>${plugin.supported.mc.versions}</mirthVersion>
+    <url>https://diridium.com</url>
+    <description>Search across all channel scripts, code templates, and global scripts for arbitrary strings.</description>
+
+    <clientClasses>
+        <string>com.diridium.sourcecodesearch.SourceCodeSearchPlugin</string>
+    </clientClasses>
+
+    <library type="SERVER" path="oie-source-code-search-server-${project.version}.jar" />
+    <library type="SHARED" path="oie-source-code-search-shared-${project.version}.jar" />
+    <library type="CLIENT" path="oie-source-code-search-client-${project.version}.jar" />
+
+    <apiProvider type="SERVLET_INTERFACE" name="com.diridium.sourcecodesearch.SourceCodeSearchServletInterface" />
+    <apiProvider type="SERVER_CLASS" name="com.diridium.sourcecodesearch.SourceCodeSearchServlet" />
+</pluginMetaData>
