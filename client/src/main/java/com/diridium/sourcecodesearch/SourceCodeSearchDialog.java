@@ -353,7 +353,8 @@ public class SourceCodeSearchDialog extends JDialog {
                         rootNode.add(codeTemplatesNode);
                     }
                     DefaultMutableTreeNode tmplNode = findOrCreateChild(codeTemplatesNode, match.getChannelName());
-                    tmplNode.add(new DefaultMutableTreeNode(lineLabel));
+                    DefaultMutableTreeNode locNode = findOrCreateChild(tmplNode, match.getLocation());
+                    locNode.add(new DefaultMutableTreeNode(lineLabel));
                     break;
                 }
                 case "GLOBAL_SCRIPT": {
