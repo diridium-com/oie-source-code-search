@@ -352,7 +352,12 @@ public class SourceCodeSearchDialog extends JDialog {
                         codeTemplatesNode = new DefaultMutableTreeNode("Code Templates");
                         rootNode.add(codeTemplatesNode);
                     }
-                    DefaultMutableTreeNode tmplNode = findOrCreateChild(codeTemplatesNode, match.getChannelName());
+                    String location = match.getLocation();
+                    int sep = location.indexOf(" > ");
+                    String libraryLabel = sep > 0 ? location.substring(0, sep) : "(No Library)";
+                    String templateLabel = sep > 0 ? location.substring(sep + 3) : location;
+                    DefaultMutableTreeNode libNode = findOrCreateChild(codeTemplatesNode, libraryLabel);
+                    DefaultMutableTreeNode tmplNode = findOrCreateChild(libNode, templateLabel);
                     tmplNode.add(new DefaultMutableTreeNode(lineLabel));
                     break;
                 }
