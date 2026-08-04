@@ -4,6 +4,7 @@
 package com.diridium.sourcecodesearch;
 
 import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.FlowLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
@@ -70,11 +71,14 @@ public class SourceCodeSearchDialog extends JDialog {
     private JButton btnSearch;
     private JButton btnExport;
     private JLabel lblStatus;
+    private JLabel lblRestricted;
     private JTree resultTree;
     private DefaultMutableTreeNode rootNode;
 
     private List<String> selectedChannelIds;
     private List<SearchMatch> lastResults;
+    private boolean lastRestricted;
+    private int lastSkippedChannelCount;
     private String lastQuery;
     private boolean lastCaseSensitive;
     private boolean lastRegex;
@@ -162,7 +166,17 @@ public class SourceCodeSearchDialog extends JDialog {
         searchPanel.add(chkConnectorProperties);
         searchPanel.add(chkSelectedOnly, "wrap");
 
-        add(searchPanel, BorderLayout.NORTH);
+        // Shown only when the server reports that results were filtered by the
+        // user's role, so a partial result set is never mistaken for a complete one.
+        lblRestricted = new JLabel();
+        lblRestricted.setForeground(new Color(0xB8, 0x6E, 0x00));
+        lblRestricted.setBorder(BorderFactory.createEmptyBorder(0, 10, 5, 10));
+        lblRestricted.setVisible(false);
+
+        JPanel northPanel = new JPanel(new BorderLayout());
+        northPanel.add(searchPanel, BorderLayout.CENTER);
+        northPanel.add(lblRestricted, BorderLayout.SOUTH);
+        add(northPanel, BorderLayout.NORTH);
 
         // Center: result tree
         rootNode = new DefaultMutableTreeNode("Search Results");
@@ -218,15 +232,16 @@ public class SourceCodeSearchDialog extends JDialog {
         btnExport.setEnabled(false);
         lastResults = null;
         lblStatus.setText("Counting matches...");
+        lblRestricted.setVisible(false);
 
         // Clear previous results
         rootNode.removeAllChildren();
         ((DefaultTreeModel) resultTree.getModel()).reload();
 
         // Phase 1: Count matches
-        new SwingWorker<Integer, Void>() {
+        new SwingWorker<SearchResults, Void>() {
             @Override
-            protected Integer doInBackground() throws Exception {
+            protected SearchResults doInBackground() throws Exception {
                 ensureServlet();
                 return servlet.count(query, caseSensitive, regex,
                         finalChannelIdsCsv, searchChannels, searchCodeTemplates, searchGlobalScripts,
@@ -236,7 +251,12 @@ public class SourceCodeSearchDialog extends JDialog {
             @Override
             protected void done() {
                 try {
-                    int matchCount = get();
+                    SearchResults counted = get();
+                    // Show the notice from the count phase too. A restricted user whose
+                    // query only matches channels they cannot see would otherwise get a
+                    // bare "No matches found" and never learn the search was filtered.
+                    showRestrictionNotice(counted);
+                    int matchCount = counted.getMatchCount();
 
                     if (matchCount == 0) {
                         lblStatus.setText("No matches found.");
@@ -280,9 +300,9 @@ public class SourceCodeSearchDialog extends JDialog {
                                boolean searchMessageTemplates, boolean searchConnectorProperties) {
         lblStatus.setText("Searching...");
 
-        new SwingWorker<List<SearchMatch>, Void>() {
+        new SwingWorker<SearchResults, Void>() {
             @Override
-            protected List<SearchMatch> doInBackground() throws Exception {
+            protected SearchResults doInBackground() throws Exception {
                 return servlet.search(query, caseSensitive, regex,
                         channelIdsCsv, searchChannels, searchCodeTemplates, searchGlobalScripts,
                         searchMessageTemplates, searchConnectorProperties);
@@ -291,8 +311,14 @@ public class SourceCodeSearchDialog extends JDialog {
             @Override
             protected void done() {
                 try {
-                    List<SearchMatch> matches = get();
+                    SearchResults results = get();
+                    showRestrictionNotice(results);
+                    List<SearchMatch> matches = results.getMatches() != null
+                            ? results.getMatches()
+                            : Collections.emptyList();
                     lastResults = matches;
+                    lastRestricted = results.isRestricted();
+                    lastSkippedChannelCount = results.getSkippedChannelCount();
                     lastQuery = query;
                     lastCaseSensitive = caseSensitive;
                     lastRegex = regex;
@@ -316,6 +342,33 @@ public class SourceCodeSearchDialog extends JDialog {
                 }
             }
         }.execute();
+    }
+
+    /**
+     * Displays the notice when the server reports that the caller's role
+     * filtered the search, and hides it otherwise. Phrased as a statement about
+     * the role rather than about the user, since the remedy is an administrator
+     * granting access, not anything the user can do here.
+     */
+    private void showRestrictionNotice(SearchResults results) {
+        if (results == null || !results.isRestricted()) {
+            lblRestricted.setVisible(false);
+            return;
+        }
+        lblRestricted.setText(restrictionNotice(results.getSkippedChannelCount()));
+        lblRestricted.setVisible(true);
+    }
+
+    private static String restrictionNotice(int skippedChannelCount) {
+        StringBuilder notice = new StringBuilder("Limited results: ");
+        if (skippedChannelCount > 0) {
+            notice.append(skippedChannelCount)
+                  .append(skippedChannelCount == 1 ? " channel was" : " channels were")
+                  .append(" excluded because your role does not grant access to them. ");
+        }
+        notice.append("Code templates and global scripts outside your role's channels "
+                + "are excluded as well, so this list may be incomplete.");
+        return notice.toString();
     }
 
     private void ensureServlet() {
@@ -486,6 +539,13 @@ public class SourceCodeSearchDialog extends JDialog {
         export.put("searchMessageTemplates", lastSearchMessageTemplates);
         export.put("searchConnectorProperties", lastSearchConnectorProperties);
         export.put("resultCount", lastResults.size());
+        // An exported file outlives the dialog that produced it, so the fact that
+        // results were filtered has to travel with the data, not just appear on screen.
+        export.put("restricted", lastRestricted);
+        if (lastRestricted) {
+            export.put("skippedChannelCount", lastSkippedChannelCount);
+            export.put("restrictionNotice", restrictionNotice(lastSkippedChannelCount));
+        }
         export.put("results", lastResults);
 
         ObjectMapper mapper = new ObjectMapper();
@@ -495,6 +555,13 @@ public class SourceCodeSearchDialog extends JDialog {
 
     private void exportCsv(File file) throws IOException {
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
+            // Only emitted for filtered exports. A leading comment row is unusual enough
+            // that some parsers will trip on it, which is the right trade when the
+            // alternative is handing someone a partial file that looks complete.
+            if (lastRestricted) {
+                writer.write("# " + restrictionNotice(lastSkippedChannelCount));
+                writer.newLine();
+            }
             writeCsvRow(writer, "groupType", "channelId", "channelName", "location", "lineNumber", "lineText");
             for (SearchMatch match : lastResults) {
                 writeCsvRow(writer,

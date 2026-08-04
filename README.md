@@ -15,6 +15,26 @@ A plugin for [Open Integration Engine](https://www.openintegrationengine.org/) (
 - **Hierarchical results** with location breadcrumbs and match highlighting
 - **Export** results as JSON (with metadata) or CSV
 - **Non-modal dialog** — search while you work
+- **Permission aware** — publishes a "Search Source Code" permission and honors per-role channel restrictions
+
+## Permissions
+
+The plugin registers a single permission, **Search Source Code**, covering both of its REST
+operations and both of its menu entries.
+
+On a stock OIE install this changes nothing: the default authorization controller allows every
+operation for every authenticated user, exactly as it does for the channel editor.
+
+On installs running a role-based authorization controller, the permission must be granted to a
+role before its users can search, and results stay within the channels that role can access.
+Channels outside the role are skipped, code templates are limited to libraries in scope for at
+least one accessible channel, and global scripts are excluded, since they are server-wide rather
+than channel-scoped. When anything is filtered the dialog says so, and the notice travels into
+JSON and CSV exports so a partial result set is never mistaken for a complete one.
+
+> **Upgrading from 1.2.0 or earlier on a role-based server:** search was previously ungated, so
+> every role could use it. After upgrading, an administrator must grant the new permission to
+> each role that should keep it. See [issue #5](https://github.com/diridium-com/oie-source-code-search/issues/5).
 
 ## Documentation
 

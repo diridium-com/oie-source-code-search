@@ -14,6 +14,10 @@
         <string>com.diridium.sourcecodesearch.SourceCodeSearchPlugin</string>
     </clientClasses>
 
+    <serverClasses>
+        <string>com.diridium.sourcecodesearch.SourceCodeSearchServicePlugin</string>
+    </serverClasses>
+
     <library type="SERVER" path="oie-source-code-search-server-${project.version}.jar" />
     <library type="SHARED" path="oie-source-code-search-shared-${project.version}.jar" />
     <library type="CLIENT" path="oie-source-code-search-client-${project.version}.jar" />

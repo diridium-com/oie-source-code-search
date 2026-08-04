@@ -1,0 +1,83 @@
+# SPDX-License-Identifier: MPL-2.0
+# Copyright (c) 2025-2026 Diridium Technologies Inc.
+#
+# Builds and tests every push to main and every pull request.
+#
+# The engine jars this plugin compiles against are not on the public repsy
+# mirror at 4.6.0, which is why scripts/install-engine-jars.sh exists for local
+# builds. CI cannot assume a sibling engine checkout, so it takes the same jars
+# from the published OIE distribution instead. The tarball is cached by tag, so
+# it is downloaded once and reused until the pinned version changes.
+
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  OIE_TAG: v4.6.0
+  OIE_TARBALL: oie_unix_4_6_0.tar.gz
+  MC_VERSION: '4.6.0'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Cache OIE distribution
+        id: oie-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.OIE_TARBALL }}
+          key: oie-dist-${{ env.OIE_TAG }}
+
+      - name: Download OIE distribution
+        if: steps.oie-cache.outputs.cache-hit != 'true'
+        run: curl -fSL -o "$OIE_TARBALL" "https://github.com/OpenIntegrationEngine/engine/releases/download/${OIE_TAG}/${OIE_TARBALL}"
+
+      # The same four jars scripts/install-engine-jars.sh installs from a local
+      # engine checkout, taken from the published distribution instead.
+      - name: Install engine jars into the local Maven repo
+        run: |
+          tar xzf "$OIE_TARBALL" \
+            oie/server-lib/mirth-server.jar \
+            oie/server-lib/mirth-client-core.jar \
+            oie/server-lib/donkey/donkey-server.jar \
+            oie/client-lib/mirth-client.jar
+          for pair in \
+            "mirth-server:oie/server-lib/mirth-server.jar" \
+            "mirth-client-core:oie/server-lib/mirth-client-core.jar" \
+            "donkey-server:oie/server-lib/donkey/donkey-server.jar" \
+            "mirth-client:oie/client-lib/mirth-client.jar"; do
+            a="${pair%%:*}"; p="${pair#*:}"
+            mvn -q install:install-file -Dfile="$p" -DgroupId=com.mirth.connect -DartifactId="$a" -Dversion="$MC_VERSION" -Dpackaging=jar
+          done
+
+      - name: Build and test
+        run: mvn -B -ntp clean verify
+
+      # A green build with zero tests run is the failure this guards against:
+      # surefire is pinned in the POM, but a pin can be dropped and nothing
+      # about the build output would look wrong.
+      - name: Confirm tests actually ran
+        run: |
+          reports=$(find . -path '*/target/surefire-reports/*.xml' | wc -l)
+          if [ "$reports" -eq 0 ]; then
+            echo "::error::No surefire reports were produced — the test suite did not run."
+            exit 1
+          fi
+          echo "surefire report files: $reports"

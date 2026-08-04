@@ -37,14 +37,17 @@ public class SourceCodeSearchPlugin extends ClientPlugin {
 
         ImageIcon icon = new ImageIcon(Frame.class.getResource("images/folder_explore.png"));
 
-        // Add to the Channels list panel
-        parent.addTask("sourceCodeSearch", "Source Code Search",
+        // Task names come from the servlet interface because the server registers those
+        // same constants as the permission's task names. If the two drift apart, the
+        // permission stops hiding the menu entries and the mismatch is invisible until
+        // a restricted user sees an action they cannot use.
+        parent.addTask(SourceCodeSearchServletInterface.TASK_SEARCH, "Source Code Search",
                 "Search across all channel scripts, code templates, and global scripts.", "",
                 icon, parent.channelPanel.channelTasks,
                 parent.channelPanel.channelPopupMenu, this);
 
         // Add to the Channel editor panel
-        parent.addTask("sourceCodeSearchChannel", "Source Code Search",
+        parent.addTask(SourceCodeSearchServletInterface.TASK_SEARCH_CHANNEL, "Source Code Search",
                 "Search this channel and its code templates.", "",
                 icon, parent.channelEditTasks,
                 parent.channelEditPopupMenu, this);

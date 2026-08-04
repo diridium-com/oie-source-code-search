@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
@@ -30,6 +31,21 @@ import com.mirth.connect.server.controllers.CodeTemplateController;
 import com.mirth.connect.server.controllers.ControllerFactory;
 import com.mirth.connect.server.controllers.ScriptController;
 
+/**
+ * Traverses server content and collects matching lines.
+ *
+ * <p>Every entry point takes a {@code channelFilter}: a predicate over channel
+ * id that is null when the caller's role places no channel restrictions on
+ * them, mirroring the engine's own convention of a null
+ * {@code ChannelAuthorizer} meaning "unrestricted". When it is non-null the
+ * traversal excludes channels the caller cannot see, excludes code templates
+ * whose library is not in scope for any visible channel, and skips global
+ * scripts entirely, since those are server-wide rather than channel-scoped.</p>
+ *
+ * <p>This class holds no per-request state; the servlet shares one instance
+ * across concurrent requests, so anything mutable must be passed through the
+ * traversal rather than stored in a field.</p>
+ */
 public class SearchEngine {
 
     private static final Logger log = LoggerFactory.getLogger(SearchEngine.class);
@@ -51,38 +67,42 @@ public class SearchEngine {
         this.scriptController = ScriptController.getInstance();
     }
 
-    public int count(String query, boolean caseSensitive, boolean regex,
-                     String channelIdsCsv, boolean searchChannels,
-                     boolean searchCodeTemplates, boolean searchGlobalScripts,
-                     boolean searchMessageTemplates, boolean searchConnectorProperties) {
+    public SearchResults count(String query, boolean caseSensitive, boolean regex,
+                               String channelIdsCsv, boolean searchChannels,
+                               boolean searchCodeTemplates, boolean searchGlobalScripts,
+                               boolean searchMessageTemplates, boolean searchConnectorProperties,
+                               Predicate<String> channelFilter) {
         Pattern pattern = buildPattern(query, caseSensitive, regex);
         AtomicInteger counter = new AtomicInteger();
+        AtomicInteger skippedChannels = new AtomicInteger();
 
         ScriptHandler handler = (groupType, chId, chName, location, script) ->
                 countMatches(pattern, counter, script);
 
-        visitAll(handler, pattern, channelIdsCsv, searchChannels,
+        visitAll(handler, channelIdsCsv, searchChannels,
                 searchCodeTemplates, searchGlobalScripts, searchMessageTemplates,
-                searchConnectorProperties);
+                searchConnectorProperties, channelFilter, skippedChannels);
 
-        return counter.get();
+        return new SearchResults(null, counter.get(), skippedChannels.get(), channelFilter != null);
     }
 
-    public List<SearchMatch> search(String query, boolean caseSensitive, boolean regex,
-                                     String channelIdsCsv, boolean searchChannels,
-                                     boolean searchCodeTemplates, boolean searchGlobalScripts,
-                                     boolean searchMessageTemplates, boolean searchConnectorProperties) {
+    public SearchResults search(String query, boolean caseSensitive, boolean regex,
+                                String channelIdsCsv, boolean searchChannels,
+                                boolean searchCodeTemplates, boolean searchGlobalScripts,
+                                boolean searchMessageTemplates, boolean searchConnectorProperties,
+                                Predicate<String> channelFilter) {
         Pattern pattern = buildPattern(query, caseSensitive, regex);
         List<SearchMatch> results = new ArrayList<>();
+        AtomicInteger skippedChannels = new AtomicInteger();
 
         ScriptHandler handler = (groupType, chId, chName, location, script) ->
                 findMatches(pattern, results, groupType, chId, chName, location, script);
 
-        visitAll(handler, pattern, channelIdsCsv, searchChannels,
+        visitAll(handler, channelIdsCsv, searchChannels,
                 searchCodeTemplates, searchGlobalScripts, searchMessageTemplates,
-                searchConnectorProperties);
+                searchConnectorProperties, channelFilter, skippedChannels);
 
-        return results;
+        return new SearchResults(results, results.size(), skippedChannels.get(), channelFilter != null);
     }
 
     private Pattern buildPattern(String query, boolean caseSensitive, boolean regex) {
@@ -99,19 +119,22 @@ public class SearchEngine {
     // Unified traversal
     // ========================
 
-    private void visitAll(ScriptHandler handler, Pattern pattern, String channelIdsCsv,
+    private void visitAll(ScriptHandler handler, String channelIdsCsv,
                           boolean searchChannels, boolean searchCodeTemplates,
                           boolean searchGlobalScripts, boolean searchMessageTemplates,
-                          boolean searchConnectorProperties) {
-        if (searchGlobalScripts) {
+                          boolean searchConnectorProperties,
+                          Predicate<String> channelFilter, AtomicInteger skippedChannels) {
+        // Global scripts are server-wide and have no channel to authorize against,
+        // so a channel-restricted caller does not see them at all.
+        if (searchGlobalScripts && channelFilter == null) {
             visitGlobalScripts(handler);
         }
         if (searchCodeTemplates) {
-            visitCodeTemplates(handler);
+            visitCodeTemplates(handler, channelFilter);
         }
         if (searchChannels || searchMessageTemplates || searchConnectorProperties) {
             visitChannels(handler, channelIdsCsv, searchChannels, searchMessageTemplates,
-                    searchConnectorProperties);
+                    searchConnectorProperties, channelFilter, skippedChannels);
         }
     }
 
@@ -121,9 +144,14 @@ public class SearchEngine {
 
     private void visitChannels(ScriptHandler handler, String channelIdsCsv,
                                boolean searchScripts, boolean searchMessageTemplates,
-                               boolean searchConnectorProperties) {
+                               boolean searchConnectorProperties,
+                               Predicate<String> channelFilter, AtomicInteger skippedChannels) {
         try {
             for (Channel channel : getChannels(channelIdsCsv)) {
+                if (channelFilter != null && !channelFilter.test(channel.getId())) {
+                    skippedChannels.incrementAndGet();
+                    continue;
+                }
                 visitChannel(handler, channel, searchScripts, searchMessageTemplates,
                         searchConnectorProperties);
             }
@@ -243,18 +271,25 @@ public class SearchEngine {
     // Code template traversal
     // ========================
 
-    private void visitCodeTemplates(ScriptHandler handler) {
+    private void visitCodeTemplates(ScriptHandler handler, Predicate<String> channelFilter) {
         try {
-            Map<String, String> templateLibraryMap = buildTemplateLibraryMap();
+            LibraryIndex index = buildLibraryIndex(channelFilter);
 
             List<CodeTemplate> templates = codeTemplateController.getCodeTemplates(null);
             if (templates == null) {
                 return;
             }
             for (CodeTemplate template : templates) {
+                // A restricted caller sees a template only if its library is in scope for at
+                // least one channel they can access. Templates belonging to no library are
+                // excluded, since there is no channel to authorize them against.
+                if (index.visibleTemplateIds() != null
+                        && !index.visibleTemplateIds().contains(template.getId())) {
+                    continue;
+                }
                 String code = template.getCode();
                 if (code != null) {
-                    String libraryName = templateLibraryMap.get(template.getId());
+                    String libraryName = index.libraryNames().get(template.getId());
                     String location = libraryName != null
                             ? libraryName + " > " + template.getName()
                             : template.getName();
@@ -266,15 +301,31 @@ public class SearchEngine {
         }
     }
 
-    private Map<String, String> buildTemplateLibraryMap() {
-        Map<String, String> map = new HashMap<>();
+    /**
+     * Template id to library name, plus the set of template ids a restricted
+     * caller may see. {@code visibleTemplateIds} is null when the caller has no
+     * channel restrictions, meaning every template is visible.
+     */
+    private record LibraryIndex(Map<String, String> libraryNames, Set<String> visibleTemplateIds) {}
+
+    private LibraryIndex buildLibraryIndex(Predicate<String> channelFilter) {
+        Map<String, String> names = new HashMap<>();
+        Set<String> visible = channelFilter == null ? null : new HashSet<>();
+        Set<String> allowedChannelIds = channelFilter == null ? null : allowedChannelIds(channelFilter);
+
         try {
             List<CodeTemplateLibrary> libraries = codeTemplateController.getLibraries(null, true);
             if (libraries != null) {
                 for (CodeTemplateLibrary library : libraries) {
-                    if (library.getCodeTemplates() != null) {
-                        for (CodeTemplate tmpl : library.getCodeTemplates()) {
-                            map.put(tmpl.getId(), library.getName());
+                    if (library.getCodeTemplates() == null) {
+                        continue;
+                    }
+                    boolean libraryVisible = visible == null
+                            || isLibraryInScope(library, allowedChannelIds);
+                    for (CodeTemplate tmpl : library.getCodeTemplates()) {
+                        names.put(tmpl.getId(), library.getName());
+                        if (visible != null && libraryVisible) {
+                            visible.add(tmpl.getId());
                         }
                     }
                 }
@@ -282,7 +333,45 @@ public class SearchEngine {
         } catch (Exception e) {
             log.error("Failed to retrieve code template libraries", e);
         }
-        return map;
+        return new LibraryIndex(names, visible);
+    }
+
+    /**
+     * True if the library applies to at least one channel the caller can access.
+     * Mirrors the engine's library scoping: a channel is covered when it is
+     * explicitly enabled, or when the library includes new channels and the
+     * channel has not been explicitly disabled.
+     */
+    static boolean isLibraryInScope(CodeTemplateLibrary library, Set<String> allowedChannelIds) {
+        Set<String> enabled = library.getEnabledChannelIds();
+        Set<String> disabled = library.getDisabledChannelIds();
+
+        for (String channelId : allowedChannelIds) {
+            if (enabled != null && enabled.contains(channelId)) {
+                return true;
+            }
+            if (library.isIncludeNewChannels() && (disabled == null || !disabled.contains(channelId))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Set<String> allowedChannelIds(Predicate<String> channelFilter) {
+        Set<String> allowed = new HashSet<>();
+        try {
+            Set<String> all = channelController.getChannelIds();
+            if (all != null) {
+                for (String channelId : all) {
+                    if (channelFilter.test(channelId)) {
+                        allowed.add(channelId);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to enumerate channel ids for code template scoping", e);
+        }
+        return allowed;
     }
 
     // ========================

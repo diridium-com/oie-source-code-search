@@ -15,7 +15,7 @@
     <packaging>pom</packaging>
 
     <properties>
-        <revision>1.2.0</revision>
+        <revision>1.3.0</revision>
 
         <plugin.supported.mc.versions>${mc.version}</plugin.supported.mc.versions>
 
@@ -24,6 +24,10 @@
         <javax-rs-api.version>2.0.1</javax-rs-api.version>
         <xstream.version>1.4.18</xstream.version>
         <slf4j.version>1.7.32</slf4j.version>
+        <junit5.version>5.10.2</junit5.version>
+        <!-- Match the version the engine ships (gradle/libs.versions.toml). -->
+        <reflections.version>0.9.10</reflections.version>
+        <commons-lang3.version>3.20.0</commons-lang3.version>
 
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
@@ -103,6 +107,29 @@
             <version>${slf4j.version}</version>
             <scope>provided</scope>
         </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit5.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- Used internally by OperationUtil.getOperationNamesForPermission. The engine
+                 ships it on the server classpath at runtime, but it arrives here through a
+                 provided-scope dependency, whose transitives Maven does not put on the test
+                 classpath. Declared here so tests exercise the real registration path. -->
+            <groupId>org.reflections</groupId>
+            <artifactId>reflections</artifactId>
+            <version>${reflections.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- Same reason as reflections above: OperationUtil calls ArrayUtils. -->
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+            <version>${commons-lang3.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <modules>
@@ -121,6 +148,15 @@
                 <configuration>
                     <release>17</release>
                 </configuration>
+            </plugin>
+            <!-- Pin surefire: unpinned, Maven <= 3.8's super-POM binds a surefire old
+                 enough to lack the JUnit Platform provider, which silently SKIPS the
+                 entire JUnit 5 suite with a green build. Pinning 3.x guarantees the tests
+                 actually run everywhere. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
