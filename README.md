@@ -48,6 +48,10 @@ See the [Wiki](https://github.com/diridium-com/oie-source-code-search/wiki) for 
 - [Regex Tips](https://github.com/diridium-com/oie-source-code-search/wiki/Regex-Tips) — common patterns and performance advice
 - [FAQ](https://github.com/diridium-com/oie-source-code-search/wiki/FAQ)
 
+## Review History
+
+[docs/review-history.md](docs/review-history.md) records every review pass this repository has been through: what was found, what was fixed, and the rationale for anything accepted rather than fixed. It also records the empirical verification behind each decision and the current standing results for tests and CI.
+
 ## Requirements
 
 | Attribute | Value |
