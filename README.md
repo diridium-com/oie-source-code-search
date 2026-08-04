@@ -11,7 +11,7 @@ A plugin for [Open Integration Engine](https://www.openintegrationengine.org/) (
 - **Full-text search** across all artifact types in a single query
 - **Literal and regex** search modes, case-sensitive or insensitive
 - **Scope control** — search Channels, Code Templates, Global Scripts, and Message Templates independently
-- **Names and descriptions** — optionally search the names and descriptions of channels, code templates, and global scripts, which appear in no script and are otherwise unreachable
+- **Names and descriptions included** — channel, code template, and global script names and descriptions are searched alongside their code, so finding an artifact by name just works
 - **Channel scoping** — search all channels, selected channels, or the current channel from the editor
 - **Hierarchical results** with location breadcrumbs and match highlighting
 - **Export** results as JSON (with metadata) or CSV

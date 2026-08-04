@@ -29,13 +29,12 @@ public class SourceCodeSearchServlet extends MirthServlet implements SourceCodeS
     public SearchResults count(String query, boolean caseSensitive, boolean regex,
                                String channelIds, boolean searchChannels,
                                boolean searchCodeTemplates, boolean searchGlobalScripts,
-                               boolean searchMessageTemplates, boolean searchConnectorProperties,
-                               boolean searchNames)
+                               boolean searchMessageTemplates, boolean searchConnectorProperties)
             throws ClientException {
         try {
             return searchEngine.count(query, caseSensitive, regex, channelIds,
                     scope(searchChannels, searchCodeTemplates, searchGlobalScripts,
-                            searchMessageTemplates, searchConnectorProperties, searchNames),
+                            searchMessageTemplates, searchConnectorProperties),
                     channelFilter());
         } catch (IllegalArgumentException e) {
             throw new ClientException(e.getMessage());
@@ -49,13 +48,12 @@ public class SourceCodeSearchServlet extends MirthServlet implements SourceCodeS
     public SearchResults search(String query, boolean caseSensitive, boolean regex,
                                 String channelIds, boolean searchChannels,
                                 boolean searchCodeTemplates, boolean searchGlobalScripts,
-                                boolean searchMessageTemplates, boolean searchConnectorProperties,
-                                boolean searchNames)
+                                boolean searchMessageTemplates, boolean searchConnectorProperties)
             throws ClientException {
         try {
             return searchEngine.search(query, caseSensitive, regex, channelIds,
                     scope(searchChannels, searchCodeTemplates, searchGlobalScripts,
-                            searchMessageTemplates, searchConnectorProperties, searchNames),
+                            searchMessageTemplates, searchConnectorProperties),
                     channelFilter());
         } catch (IllegalArgumentException e) {
             throw new ClientException(e.getMessage());
@@ -73,9 +71,9 @@ public class SourceCodeSearchServlet extends MirthServlet implements SourceCodeS
      */
     private static SearchEngine.SearchScope scope(boolean searchChannels, boolean searchCodeTemplates,
                                                   boolean searchGlobalScripts, boolean searchMessageTemplates,
-                                                  boolean searchConnectorProperties, boolean searchNames) {
+                                                  boolean searchConnectorProperties) {
         return new SearchEngine.SearchScope(searchChannels, searchCodeTemplates, searchGlobalScripts,
-                searchMessageTemplates, searchConnectorProperties, searchNames);
+                searchMessageTemplates, searchConnectorProperties);
     }
 
     /**

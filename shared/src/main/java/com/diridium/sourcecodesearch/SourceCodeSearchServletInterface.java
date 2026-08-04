@@ -73,9 +73,7 @@ public interface SourceCodeSearchServletInterface extends BaseServletInterface {
             @Param("searchMessageTemplates") @Parameter(description = "Search message templates")
             @QueryParam("searchMessageTemplates") boolean searchMessageTemplates,
             @Param("searchConnectorProperties") @Parameter(description = "Search connector properties (URLs, settings, etc.)")
-            @QueryParam("searchConnectorProperties") boolean searchConnectorProperties,
-            @Param("searchNames") @Parameter(description = "Search artifact names and descriptions")
-            @QueryParam("searchNames") boolean searchNames
+            @QueryParam("searchConnectorProperties") boolean searchConnectorProperties
     ) throws ClientException;
 
     @GET
@@ -105,8 +103,6 @@ public interface SourceCodeSearchServletInterface extends BaseServletInterface {
             @Param("searchMessageTemplates") @Parameter(description = "Search message templates")
             @QueryParam("searchMessageTemplates") boolean searchMessageTemplates,
             @Param("searchConnectorProperties") @Parameter(description = "Search connector properties (URLs, settings, etc.)")
-            @QueryParam("searchConnectorProperties") boolean searchConnectorProperties,
-            @Param("searchNames") @Parameter(description = "Search artifact names and descriptions")
-            @QueryParam("searchNames") boolean searchNames
+            @QueryParam("searchConnectorProperties") boolean searchConnectorProperties
     ) throws ClientException;
 }

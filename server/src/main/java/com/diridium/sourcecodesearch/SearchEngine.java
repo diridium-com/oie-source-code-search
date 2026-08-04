@@ -62,25 +62,18 @@ public class SearchEngine {
      *
      * <p>Each flag is an independent category rather than a filter on the
      * others, matching how the dialog's checkboxes have always behaved: a
-     * caller can search message templates without searching channel scripts.
-     * {@code namesAndDescriptions} follows the same rule and covers the labels
-     * of every artifact type, which are otherwise unsearchable because the
-     * matcher only ever sees script and template bodies.</p>
+     * caller can search message templates without searching channel scripts.</p>
+     *
+     * <p>Each artifact's name and description travel with its own scope rather
+     * than having a flag of their own. They amount to a line or two per
+     * artifact, so gating them separately bought almost no noise reduction in
+     * exchange for another control and another combination to reason about.</p>
      */
     public record SearchScope(boolean channels, boolean codeTemplates, boolean globalScripts,
-                              boolean messageTemplates, boolean connectorProperties,
-                              boolean namesAndDescriptions) {
+                              boolean messageTemplates, boolean connectorProperties) {
 
         boolean visitsChannels() {
-            return channels || messageTemplates || connectorProperties || namesAndDescriptions;
-        }
-
-        boolean visitsCodeTemplates() {
-            return codeTemplates || namesAndDescriptions;
-        }
-
-        boolean visitsGlobalScripts() {
-            return globalScripts || namesAndDescriptions;
+            return channels || messageTemplates || connectorProperties;
         }
     }
 
@@ -143,11 +136,11 @@ public class SearchEngine {
         // Global scripts are server-wide and have no channel to authorize against,
         // so a channel-restricted caller does not see them at all. That covers their
         // names too, which is why this guard sits ahead of the scope check.
-        if (scope.visitsGlobalScripts() && channelFilter == null) {
-            visitGlobalScripts(handler, scope);
+        if (scope.globalScripts() && channelFilter == null) {
+            visitGlobalScripts(handler);
         }
-        if (scope.visitsCodeTemplates()) {
-            visitCodeTemplates(handler, scope, channelFilter);
+        if (scope.codeTemplates()) {
+            visitCodeTemplates(handler, channelFilter);
         }
         if (scope.visitsChannels()) {
             visitChannels(handler, channelIdsCsv, scope, channelFilter, skippedChannels);
@@ -180,15 +173,13 @@ public class SearchEngine {
         boolean searchMessageTemplates = scope.messageTemplates();
         boolean searchConnectorProperties = scope.connectorProperties();
 
-        // A channel's name and description appear nowhere in its scripts, so without
-        // this they are unreachable. Unauthorized channels never get here, so a
-        // restricted caller cannot learn a hidden channel's name this way.
-        if (scope.namesAndDescriptions()) {
+        if (searchScripts) {
+            // The name and description appear nowhere in the scripts, so without these
+            // two they are unreachable. Unauthorized channels never get here, so a
+            // restricted caller cannot learn a hidden channel's name this way.
             handler.handle("CHANNEL", chId, chName, "Channel Name", chName);
             handler.handle("CHANNEL", chId, chName, "Channel Description", channel.getDescription());
-        }
 
-        if (searchScripts) {
             handler.handle("CHANNEL", chId, chName, "Preprocessing Script", channel.getPreprocessingScript());
             handler.handle("CHANNEL", chId, chName, "Postprocessing Script", channel.getPostprocessingScript());
             handler.handle("CHANNEL", chId, chName, "Deploy Script", channel.getDeployScript());
@@ -293,8 +284,7 @@ public class SearchEngine {
     // Code template traversal
     // ========================
 
-    private void visitCodeTemplates(ScriptHandler handler, SearchScope scope,
-                                    Predicate<String> channelFilter) {
+    private void visitCodeTemplates(ScriptHandler handler, Predicate<String> channelFilter) {
         try {
             LibraryIndex index = buildLibraryIndex(channelFilter);
 
@@ -319,18 +309,14 @@ public class SearchEngine {
                 // name in its declaration, but a drag-and-drop snippet has no declaration
                 // and its name is the only label it has. The description is a separate
                 // property from the code and is never in the body.
-                if (scope.namesAndDescriptions()) {
-                    handler.handle("CODE_TEMPLATE", template.getId(), template.getName(),
-                            location + " > Name", template.getName());
-                    handler.handle("CODE_TEMPLATE", template.getId(), template.getName(),
-                            location + " > Description", template.getDescription());
-                }
+                handler.handle("CODE_TEMPLATE", template.getId(), template.getName(),
+                        location + " > Name", template.getName());
+                handler.handle("CODE_TEMPLATE", template.getId(), template.getName(),
+                        location + " > Description", template.getDescription());
 
-                if (scope.codeTemplates()) {
-                    String code = template.getCode();
-                    if (code != null) {
-                        handler.handle("CODE_TEMPLATE", template.getId(), template.getName(), location, code);
-                    }
+                String code = template.getCode();
+                if (code != null) {
+                    handler.handle("CODE_TEMPLATE", template.getId(), template.getName(), location, code);
                 }
             }
         } catch (Exception e) {
@@ -415,20 +401,16 @@ public class SearchEngine {
     // Global script traversal
     // ========================
 
-    private void visitGlobalScripts(ScriptHandler handler, SearchScope scope) {
+    private void visitGlobalScripts(ScriptHandler handler) {
         try {
             Map<String, String> globalScripts = scriptController.getGlobalScripts();
             if (globalScripts == null) {
                 return;
             }
             for (Map.Entry<String, String> entry : globalScripts.entrySet()) {
-                if (scope.namesAndDescriptions()) {
-                    handler.handle("GLOBAL_SCRIPT", null, entry.getKey(),
-                            entry.getKey() + " > Name", entry.getKey());
-                }
-                if (scope.globalScripts()) {
-                    handler.handle("GLOBAL_SCRIPT", null, entry.getKey(), entry.getKey(), entry.getValue());
-                }
+                handler.handle("GLOBAL_SCRIPT", null, entry.getKey(),
+                        entry.getKey() + " > Name", entry.getKey());
+                handler.handle("GLOBAL_SCRIPT", null, entry.getKey(), entry.getKey(), entry.getValue());
             }
         } catch (Exception e) {
             log.error("Failed to retrieve global scripts", e);
