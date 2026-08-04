@@ -1,6 +1,6 @@
 # OIE Source Code Search
 
-[![release](https://img.shields.io/github/v/release/diridium-com/oie-source-code-search?label=release&color=blue)](https://github.com/diridium-com/oie-source-code-search/releases/latest) [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-green.svg)](LICENSE) ![Java](https://img.shields.io/badge/Java-17%2B-blue.svg) [![OIE](https://img.shields.io/badge/OIE-4.6.0-blue.svg)](https://www.openintegrationengine.org/)
+[![build](https://github.com/diridium-com/oie-source-code-search/actions/workflows/build.yml/badge.svg)](https://github.com/diridium-com/oie-source-code-search/actions/workflows/build.yml) [![release](https://img.shields.io/github/v/release/diridium-com/oie-source-code-search?label=release&color=blue)](https://github.com/diridium-com/oie-source-code-search/releases/latest) [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-green.svg)](LICENSE) ![Java](https://img.shields.io/badge/Java-17%2B-blue.svg) [![OIE](https://img.shields.io/badge/OIE-4.6.0-blue.svg)](https://www.openintegrationengine.org/)
 
 A plugin for [Open Integration Engine](https://www.openintegrationengine.org/) (OIE) that provides grep-like search across all channel scripts, code templates, global scripts, and message templates — directly from the Administrator UI.
 
