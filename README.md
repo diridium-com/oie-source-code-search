@@ -11,6 +11,7 @@ A plugin for [Open Integration Engine](https://www.openintegrationengine.org/) (
 - **Full-text search** across all artifact types in a single query
 - **Literal and regex** search modes, case-sensitive or insensitive
 - **Scope control** — search Channels, Code Templates, Global Scripts, and Message Templates independently
+- **Names and descriptions** — optionally search the names and descriptions of channels, code templates, and global scripts, which appear in no script and are otherwise unreachable
 - **Channel scoping** — search all channels, selected channels, or the current channel from the editor
 - **Hierarchical results** with location breadcrumbs and match highlighting
 - **Export** results as JSON (with metadata) or CSV
@@ -29,7 +30,8 @@ On installs running a role-based authorization controller, the permission must b
 role before its users can search, and results stay within the channels that role can access.
 Channels outside the role are skipped, code templates are limited to libraries in scope for at
 least one accessible channel, and global scripts are excluded, since they are server-wide rather
-than channel-scoped. When anything is filtered the dialog says so, and the notice travels into
+than channel-scoped. The same applies to names and descriptions: a channel a role cannot access is
+never visited, so its name cannot surface through a name search either. When anything is filtered the dialog says so, and the notice travels into
 JSON and CSV exports so a partial result set is never mistaken for a complete one.
 
 > **Upgrading from 1.2.0 or earlier on a role-based server:** search was previously ungated, so

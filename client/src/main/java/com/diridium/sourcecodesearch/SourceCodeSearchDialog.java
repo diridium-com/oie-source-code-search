@@ -67,6 +67,7 @@ public class SourceCodeSearchDialog extends JDialog {
     private JCheckBox chkGlobalScripts;
     private JCheckBox chkMessageTemplates;
     private JCheckBox chkConnectorProperties;
+    private JCheckBox chkNames;
     private JCheckBox chkSelectedOnly;
     private JButton btnSearch;
     private JButton btnExport;
@@ -87,6 +88,7 @@ public class SourceCodeSearchDialog extends JDialog {
     private boolean lastSearchGlobalScripts;
     private boolean lastSearchMessageTemplates;
     private boolean lastSearchConnectorProperties;
+    private boolean lastSearchNames;
     private SourceCodeSearchServletInterface servlet;
 
     public SourceCodeSearchDialog(JFrame parent, List<String> selectedChannelIds) {
@@ -156,14 +158,18 @@ public class SourceCodeSearchDialog extends JDialog {
         chkGlobalScripts = new JCheckBox("Global Scripts", true);
         chkMessageTemplates = new JCheckBox("Message Templates");
         chkConnectorProperties = new JCheckBox("Connector Properties", true);
+        chkNames = new JCheckBox("Names & Descriptions");
+        chkNames.setToolTipText("Search channel, code template, and global script names and "
+                + "descriptions. These appear in no script, so they are unreachable otherwise.");
         chkSelectedOnly = new JCheckBox("Selected Channels Only");
         chkSelectedOnly.setEnabled(selectedChannelIds != null && !selectedChannelIds.isEmpty());
 
-        searchPanel.add(chkChannels, "skip 1, split 6");
+        searchPanel.add(chkChannels, "skip 1, split 7");
         searchPanel.add(chkCodeTemplates);
         searchPanel.add(chkGlobalScripts);
         searchPanel.add(chkMessageTemplates);
         searchPanel.add(chkConnectorProperties);
+        searchPanel.add(chkNames);
         searchPanel.add(chkSelectedOnly, "wrap");
 
         // Shown only when the server reports that results were filtered by the
@@ -221,6 +227,7 @@ public class SourceCodeSearchDialog extends JDialog {
         final boolean searchGlobalScripts = chkGlobalScripts.isSelected();
         final boolean searchMessageTemplates = chkMessageTemplates.isSelected();
         final boolean searchConnectorProperties = chkConnectorProperties.isSelected();
+        final boolean searchNames = chkNames.isSelected();
 
         String channelIdsCsv = "";
         if (chkSelectedOnly.isSelected() && selectedChannelIds != null && !selectedChannelIds.isEmpty()) {
@@ -245,7 +252,7 @@ public class SourceCodeSearchDialog extends JDialog {
                 ensureServlet();
                 return servlet.count(query, caseSensitive, regex,
                         finalChannelIdsCsv, searchChannels, searchCodeTemplates, searchGlobalScripts,
-                        searchMessageTemplates, searchConnectorProperties);
+                        searchMessageTemplates, searchConnectorProperties, searchNames);
             }
 
             @Override
@@ -283,7 +290,7 @@ public class SourceCodeSearchDialog extends JDialog {
                     // Phase 2: Fetch full results
                     fetchResults(query, caseSensitive, regex, finalChannelIdsCsv,
                             searchChannels, searchCodeTemplates, searchGlobalScripts,
-                            searchMessageTemplates, searchConnectorProperties);
+                            searchMessageTemplates, searchConnectorProperties, searchNames);
                 } catch (Exception e) {
                     log.error("Count failed", e);
                     lblStatus.setText("Search failed: " + e.getMessage());
@@ -297,7 +304,8 @@ public class SourceCodeSearchDialog extends JDialog {
     private void fetchResults(String query, boolean caseSensitive, boolean regex,
                                String channelIdsCsv, boolean searchChannels,
                                boolean searchCodeTemplates, boolean searchGlobalScripts,
-                               boolean searchMessageTemplates, boolean searchConnectorProperties) {
+                               boolean searchMessageTemplates, boolean searchConnectorProperties,
+                               boolean searchNames) {
         lblStatus.setText("Searching...");
 
         new SwingWorker<SearchResults, Void>() {
@@ -305,7 +313,7 @@ public class SourceCodeSearchDialog extends JDialog {
             protected SearchResults doInBackground() throws Exception {
                 return servlet.search(query, caseSensitive, regex,
                         channelIdsCsv, searchChannels, searchCodeTemplates, searchGlobalScripts,
-                        searchMessageTemplates, searchConnectorProperties);
+                        searchMessageTemplates, searchConnectorProperties, searchNames);
             }
 
             @Override
@@ -327,6 +335,7 @@ public class SourceCodeSearchDialog extends JDialog {
                     lastSearchGlobalScripts = searchGlobalScripts;
                     lastSearchMessageTemplates = searchMessageTemplates;
                     lastSearchConnectorProperties = searchConnectorProperties;
+                    lastSearchNames = searchNames;
                     int flags = caseSensitive ? 0 : Pattern.CASE_INSENSITIVE;
                     String patternStr = regex ? query : Pattern.quote(query);
                     Pattern highlightPattern = Pattern.compile(patternStr, flags);
@@ -538,6 +547,7 @@ public class SourceCodeSearchDialog extends JDialog {
         export.put("searchGlobalScripts", lastSearchGlobalScripts);
         export.put("searchMessageTemplates", lastSearchMessageTemplates);
         export.put("searchConnectorProperties", lastSearchConnectorProperties);
+        export.put("searchNames", lastSearchNames);
         export.put("resultCount", lastResults.size());
         // An exported file outlives the dialog that produced it, so the fact that
         // results were filtered has to travel with the data, not just appear on screen.

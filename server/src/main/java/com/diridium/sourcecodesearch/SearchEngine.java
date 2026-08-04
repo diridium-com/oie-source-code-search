@@ -57,6 +57,33 @@ public class SearchEngine {
                     String location, String scriptContent);
     }
 
+    /**
+     * Which categories of content a search covers.
+     *
+     * <p>Each flag is an independent category rather than a filter on the
+     * others, matching how the dialog's checkboxes have always behaved: a
+     * caller can search message templates without searching channel scripts.
+     * {@code namesAndDescriptions} follows the same rule and covers the labels
+     * of every artifact type, which are otherwise unsearchable because the
+     * matcher only ever sees script and template bodies.</p>
+     */
+    public record SearchScope(boolean channels, boolean codeTemplates, boolean globalScripts,
+                              boolean messageTemplates, boolean connectorProperties,
+                              boolean namesAndDescriptions) {
+
+        boolean visitsChannels() {
+            return channels || messageTemplates || connectorProperties || namesAndDescriptions;
+        }
+
+        boolean visitsCodeTemplates() {
+            return codeTemplates || namesAndDescriptions;
+        }
+
+        boolean visitsGlobalScripts() {
+            return globalScripts || namesAndDescriptions;
+        }
+    }
+
     private final ChannelController channelController;
     private final CodeTemplateController codeTemplateController;
     private final ScriptController scriptController;
@@ -68,9 +95,7 @@ public class SearchEngine {
     }
 
     public SearchResults count(String query, boolean caseSensitive, boolean regex,
-                               String channelIdsCsv, boolean searchChannels,
-                               boolean searchCodeTemplates, boolean searchGlobalScripts,
-                               boolean searchMessageTemplates, boolean searchConnectorProperties,
+                               String channelIdsCsv, SearchScope scope,
                                Predicate<String> channelFilter) {
         Pattern pattern = buildPattern(query, caseSensitive, regex);
         AtomicInteger counter = new AtomicInteger();
@@ -79,17 +104,13 @@ public class SearchEngine {
         ScriptHandler handler = (groupType, chId, chName, location, script) ->
                 countMatches(pattern, counter, script);
 
-        visitAll(handler, channelIdsCsv, searchChannels,
-                searchCodeTemplates, searchGlobalScripts, searchMessageTemplates,
-                searchConnectorProperties, channelFilter, skippedChannels);
+        visitAll(handler, channelIdsCsv, scope, channelFilter, skippedChannels);
 
         return new SearchResults(null, counter.get(), skippedChannels.get(), channelFilter != null);
     }
 
     public SearchResults search(String query, boolean caseSensitive, boolean regex,
-                                String channelIdsCsv, boolean searchChannels,
-                                boolean searchCodeTemplates, boolean searchGlobalScripts,
-                                boolean searchMessageTemplates, boolean searchConnectorProperties,
+                                String channelIdsCsv, SearchScope scope,
                                 Predicate<String> channelFilter) {
         Pattern pattern = buildPattern(query, caseSensitive, regex);
         List<SearchMatch> results = new ArrayList<>();
@@ -98,9 +119,7 @@ public class SearchEngine {
         ScriptHandler handler = (groupType, chId, chName, location, script) ->
                 findMatches(pattern, results, groupType, chId, chName, location, script);
 
-        visitAll(handler, channelIdsCsv, searchChannels,
-                searchCodeTemplates, searchGlobalScripts, searchMessageTemplates,
-                searchConnectorProperties, channelFilter, skippedChannels);
+        visitAll(handler, channelIdsCsv, scope, channelFilter, skippedChannels);
 
         return new SearchResults(results, results.size(), skippedChannels.get(), channelFilter != null);
     }
@@ -119,22 +138,19 @@ public class SearchEngine {
     // Unified traversal
     // ========================
 
-    private void visitAll(ScriptHandler handler, String channelIdsCsv,
-                          boolean searchChannels, boolean searchCodeTemplates,
-                          boolean searchGlobalScripts, boolean searchMessageTemplates,
-                          boolean searchConnectorProperties,
+    private void visitAll(ScriptHandler handler, String channelIdsCsv, SearchScope scope,
                           Predicate<String> channelFilter, AtomicInteger skippedChannels) {
         // Global scripts are server-wide and have no channel to authorize against,
-        // so a channel-restricted caller does not see them at all.
-        if (searchGlobalScripts && channelFilter == null) {
-            visitGlobalScripts(handler);
+        // so a channel-restricted caller does not see them at all. That covers their
+        // names too, which is why this guard sits ahead of the scope check.
+        if (scope.visitsGlobalScripts() && channelFilter == null) {
+            visitGlobalScripts(handler, scope);
         }
-        if (searchCodeTemplates) {
-            visitCodeTemplates(handler, channelFilter);
+        if (scope.visitsCodeTemplates()) {
+            visitCodeTemplates(handler, scope, channelFilter);
         }
-        if (searchChannels || searchMessageTemplates || searchConnectorProperties) {
-            visitChannels(handler, channelIdsCsv, searchChannels, searchMessageTemplates,
-                    searchConnectorProperties, channelFilter, skippedChannels);
+        if (scope.visitsChannels()) {
+            visitChannels(handler, channelIdsCsv, scope, channelFilter, skippedChannels);
         }
     }
 
@@ -142,9 +158,7 @@ public class SearchEngine {
     // Channel traversal
     // ========================
 
-    private void visitChannels(ScriptHandler handler, String channelIdsCsv,
-                               boolean searchScripts, boolean searchMessageTemplates,
-                               boolean searchConnectorProperties,
+    private void visitChannels(ScriptHandler handler, String channelIdsCsv, SearchScope scope,
                                Predicate<String> channelFilter, AtomicInteger skippedChannels) {
         try {
             for (Channel channel : getChannels(channelIdsCsv)) {
@@ -152,19 +166,27 @@ public class SearchEngine {
                     skippedChannels.incrementAndGet();
                     continue;
                 }
-                visitChannel(handler, channel, searchScripts, searchMessageTemplates,
-                        searchConnectorProperties);
+                visitChannel(handler, channel, scope);
             }
         } catch (Exception e) {
             log.error("Failed to retrieve channels", e);
         }
     }
 
-    private void visitChannel(ScriptHandler handler, Channel channel,
-                              boolean searchScripts, boolean searchMessageTemplates,
-                              boolean searchConnectorProperties) {
+    private void visitChannel(ScriptHandler handler, Channel channel, SearchScope scope) {
         String chId = channel.getId();
         String chName = channel.getName();
+        boolean searchScripts = scope.channels();
+        boolean searchMessageTemplates = scope.messageTemplates();
+        boolean searchConnectorProperties = scope.connectorProperties();
+
+        // A channel's name and description appear nowhere in its scripts, so without
+        // this they are unreachable. Unauthorized channels never get here, so a
+        // restricted caller cannot learn a hidden channel's name this way.
+        if (scope.namesAndDescriptions()) {
+            handler.handle("CHANNEL", chId, chName, "Channel Name", chName);
+            handler.handle("CHANNEL", chId, chName, "Channel Description", channel.getDescription());
+        }
 
         if (searchScripts) {
             handler.handle("CHANNEL", chId, chName, "Preprocessing Script", channel.getPreprocessingScript());
@@ -271,7 +293,8 @@ public class SearchEngine {
     // Code template traversal
     // ========================
 
-    private void visitCodeTemplates(ScriptHandler handler, Predicate<String> channelFilter) {
+    private void visitCodeTemplates(ScriptHandler handler, SearchScope scope,
+                                    Predicate<String> channelFilter) {
         try {
             LibraryIndex index = buildLibraryIndex(channelFilter);
 
@@ -287,13 +310,27 @@ public class SearchEngine {
                         && !index.visibleTemplateIds().contains(template.getId())) {
                     continue;
                 }
-                String code = template.getCode();
-                if (code != null) {
-                    String libraryName = index.libraryNames().get(template.getId());
-                    String location = libraryName != null
-                            ? libraryName + " > " + template.getName()
-                            : template.getName();
-                    handler.handle("CODE_TEMPLATE", template.getId(), template.getName(), location, code);
+                String libraryName = index.libraryNames().get(template.getId());
+                String location = libraryName != null
+                        ? libraryName + " > " + template.getName()
+                        : template.getName();
+
+                // Usually redundant for a FUNCTION template, whose body carries the same
+                // name in its declaration, but a drag-and-drop snippet has no declaration
+                // and its name is the only label it has. The description is a separate
+                // property from the code and is never in the body.
+                if (scope.namesAndDescriptions()) {
+                    handler.handle("CODE_TEMPLATE", template.getId(), template.getName(),
+                            location + " > Name", template.getName());
+                    handler.handle("CODE_TEMPLATE", template.getId(), template.getName(),
+                            location + " > Description", template.getDescription());
+                }
+
+                if (scope.codeTemplates()) {
+                    String code = template.getCode();
+                    if (code != null) {
+                        handler.handle("CODE_TEMPLATE", template.getId(), template.getName(), location, code);
+                    }
                 }
             }
         } catch (Exception e) {
@@ -378,14 +415,20 @@ public class SearchEngine {
     // Global script traversal
     // ========================
 
-    private void visitGlobalScripts(ScriptHandler handler) {
+    private void visitGlobalScripts(ScriptHandler handler, SearchScope scope) {
         try {
             Map<String, String> globalScripts = scriptController.getGlobalScripts();
             if (globalScripts == null) {
                 return;
             }
             for (Map.Entry<String, String> entry : globalScripts.entrySet()) {
-                handler.handle("GLOBAL_SCRIPT", null, entry.getKey(), entry.getKey(), entry.getValue());
+                if (scope.namesAndDescriptions()) {
+                    handler.handle("GLOBAL_SCRIPT", null, entry.getKey(),
+                            entry.getKey() + " > Name", entry.getKey());
+                }
+                if (scope.globalScripts()) {
+                    handler.handle("GLOBAL_SCRIPT", null, entry.getKey(), entry.getKey(), entry.getValue());
+                }
             }
         } catch (Exception e) {
             log.error("Failed to retrieve global scripts", e);
