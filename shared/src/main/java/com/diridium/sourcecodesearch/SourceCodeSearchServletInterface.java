@@ -3,8 +3,6 @@
 
 package com.diridium.sourcecodesearch;
 
-import java.util.List;
-
 import javax.ws.rs.Consumes;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
@@ -14,7 +12,6 @@ import javax.ws.rs.core.MediaType;
 
 import com.mirth.connect.client.core.ClientException;
 import com.mirth.connect.client.core.Operation.ExecuteType;
-import com.mirth.connect.client.core.Permissions;
 import com.mirth.connect.client.core.api.BaseServletInterface;
 import com.mirth.connect.client.core.api.MirthOperation;
 import com.mirth.connect.client.core.api.Param;
@@ -33,21 +30,39 @@ public interface SourceCodeSearchServletInterface extends BaseServletInterface {
 
     String PLUGIN_NAME = "OIE Source Code Search";
 
+    /**
+     * Permission published to the engine by {@code SourceCodeSearchServicePlugin}
+     * and required for both operations below.
+     *
+     * <p>This is deliberately the plugin's own permission rather than a core one
+     * such as {@code Permissions.CHANNELS_VIEW}. Extension servlet operations are
+     * delivered to the authorization controller as the composite name
+     * {@code "<pluginName>#<operationName>"}, which can never match a core
+     * permission map keyed by bare engine operation names, so naming a core
+     * permission here would have no effect at all.</p>
+     */
+    String PERMISSION_SEARCH = "Search Source Code";
+
+    /** Client task names gated by {@link #PERMISSION_SEARCH}. */
+    String TASK_SEARCH = "sourceCodeSearch";
+    String TASK_SEARCH_CHANNEL = "sourceCodeSearchChannel";
+
     @GET
     @Path("/count")
     @Operation(summary = "Count matches across channels, code templates, and global scripts")
     @ApiResponse(content = {
             @Content(mediaType = MediaType.APPLICATION_JSON)})
     @MirthOperation(name = "count", display = "Count search matches",
-            permission = Permissions.CHANNELS_VIEW, type = ExecuteType.ASYNC, auditable = false)
-    int count(
+            permission = PERMISSION_SEARCH, type = ExecuteType.ASYNC, auditable = true)
+    SearchResults count(
             @Param("query") @Parameter(description = "Search string", required = true)
             @QueryParam("query") String query,
             @Param("caseSensitive") @Parameter(description = "Case sensitive search")
             @QueryParam("caseSensitive") boolean caseSensitive,
             @Param("regex") @Parameter(description = "Use regex matching")
             @QueryParam("regex") boolean regex,
-            @Param("channelIds") @Parameter(description = "Comma-separated channel IDs to search (empty = all)")
+            @Param("channelFilter")
+            @Parameter(description = "Comma-separated channel IDs to search (empty = all)")
             @QueryParam("channelIds") String channelIds,
             @Param("searchChannels") @Parameter(description = "Search channel scripts")
             @QueryParam("searchChannels") boolean searchChannels,
@@ -68,15 +83,16 @@ public interface SourceCodeSearchServletInterface extends BaseServletInterface {
             @Content(mediaType = MediaType.APPLICATION_XML),
             @Content(mediaType = MediaType.APPLICATION_JSON)})
     @MirthOperation(name = "search", display = "Search channel scripts and code templates",
-            permission = Permissions.CHANNELS_VIEW, type = ExecuteType.ASYNC, auditable = false)
-    List<SearchMatch> search(
+            permission = PERMISSION_SEARCH, type = ExecuteType.ASYNC, auditable = true)
+    SearchResults search(
             @Param("query") @Parameter(description = "Search string", required = true)
             @QueryParam("query") String query,
             @Param("caseSensitive") @Parameter(description = "Case sensitive search")
             @QueryParam("caseSensitive") boolean caseSensitive,
             @Param("regex") @Parameter(description = "Use regex matching")
             @QueryParam("regex") boolean regex,
-            @Param("channelIds") @Parameter(description = "Comma-separated channel IDs to search (empty = all)")
+            @Param("channelFilter")
+            @Parameter(description = "Comma-separated channel IDs to search (empty = all)")
             @QueryParam("channelIds") String channelIds,
             @Param("searchChannels") @Parameter(description = "Search channel scripts")
             @QueryParam("searchChannels") boolean searchChannels,
