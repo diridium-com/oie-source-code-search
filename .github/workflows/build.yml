@@ -20,11 +20,6 @@ on:
 permissions:
   contents: read
 
-env:
-  OIE_TAG: v4.6.0
-  OIE_TARBALL: oie_unix_4_6_0.tar.gz
-  MC_VERSION: '4.6.0'
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -38,20 +33,44 @@ jobs:
           java-version: '17'
           cache: maven
 
+      # The engine version lives in exactly one place, the POM's mc.version. Hardcoding
+      # it here as well meant a future engine bump could leave CI installing 4.6.0 jars
+      # while the build compiled against something else, with nothing to catch it.
+      # The release tag and tarball name are mechanical transforms of that version, so
+      # if OIE ever changes its asset naming the download 404s loudly rather than
+      # resolving something stale.
+      - name: Resolve the engine version from the POM
+        id: engine
+        run: |
+          MC_VERSION="$(mvn -q -N help:evaluate -Dexpression=mc.version -DforceStdout)"
+          if [ -z "$MC_VERSION" ]; then
+            echo "::error::Could not read mc.version from pom.xml"
+            exit 1
+          fi
+          echo "mc_version=$MC_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v${MC_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tarball=oie_unix_${MC_VERSION//./_}.tar.gz" >> "$GITHUB_OUTPUT"
+
       - name: Cache OIE distribution
         id: oie-cache
         uses: actions/cache@v4
         with:
-          path: ${{ env.OIE_TARBALL }}
-          key: oie-dist-${{ env.OIE_TAG }}
+          path: ${{ steps.engine.outputs.tarball }}
+          key: oie-dist-${{ steps.engine.outputs.tag }}
 
       - name: Download OIE distribution
         if: steps.oie-cache.outputs.cache-hit != 'true'
+        env:
+          OIE_TAG: ${{ steps.engine.outputs.tag }}
+          OIE_TARBALL: ${{ steps.engine.outputs.tarball }}
         run: curl -fSL -o "$OIE_TARBALL" "https://github.com/OpenIntegrationEngine/engine/releases/download/${OIE_TAG}/${OIE_TARBALL}"
 
       # The same four jars scripts/install-engine-jars.sh installs from a local
       # engine checkout, taken from the published distribution instead.
       - name: Install engine jars into the local Maven repo
+        env:
+          OIE_TARBALL: ${{ steps.engine.outputs.tarball }}
+          MC_VERSION: ${{ steps.engine.outputs.mc_version }}
         run: |
           tar xzf "$OIE_TARBALL" \
             oie/server-lib/mirth-server.jar \
