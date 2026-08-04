@@ -5,6 +5,7 @@ package com.diridium.sourcecodesearch;
 
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
@@ -99,7 +100,12 @@ public class SourceCodeSearchDialog extends JDialog {
 
         initComponents();
 
-        setSize(800, 600);
+        // Size to the controls first, then apply the default. Hardcoding a width alone
+        // is what let the controls get clipped when a scope was added; taking the max
+        // means a future addition widens the dialog instead of being cut off.
+        pack();
+        setSize(Math.max(getWidth(), 800), 600);
+        setMinimumSize(new Dimension(Math.max(getWidth() / 2, 500), 300));
         setLocationRelativeTo(parent);
 
         // Escape key closes dialog
@@ -144,13 +150,12 @@ public class SourceCodeSearchDialog extends JDialog {
         btnSearch.addActionListener(e -> performSearch());
         searchPanel.add(btnSearch, "wrap");
 
-        // Options row
+        // Modifiers: these change how the query is matched or which channels are
+        // considered, rather than adding a category of content to search.
         chkCaseSensitive = new JCheckBox("Case Sensitive");
         chkRegex = new JCheckBox("Regex");
-        searchPanel.add(chkCaseSensitive, "skip 1, split 2");
-        searchPanel.add(chkRegex, "wrap");
 
-        // Scope row
+        // Scope: each of these adds a category of content.
         chkChannels = new JCheckBox("Channels", true);
         chkCodeTemplates = new JCheckBox("Code Templates", true);
         chkGlobalScripts = new JCheckBox("Global Scripts", true);
@@ -159,12 +164,15 @@ public class SourceCodeSearchDialog extends JDialog {
         chkSelectedOnly = new JCheckBox("Selected Channels Only");
         chkSelectedOnly.setEnabled(selectedChannelIds != null && !selectedChannelIds.isEmpty());
 
-        searchPanel.add(chkChannels, "skip 1, split 6");
+        searchPanel.add(chkCaseSensitive, "skip 1, split 3");
+        searchPanel.add(chkRegex);
+        searchPanel.add(chkSelectedOnly, "wrap");
+
+        searchPanel.add(chkChannels, "skip 1, split 5");
         searchPanel.add(chkCodeTemplates);
         searchPanel.add(chkGlobalScripts);
         searchPanel.add(chkMessageTemplates);
-        searchPanel.add(chkConnectorProperties);
-        searchPanel.add(chkSelectedOnly, "wrap");
+        searchPanel.add(chkConnectorProperties, "wrap");
 
         // Shown only when the server reports that results were filtered by the
         // user's role, so a partial result set is never mistaken for a complete one.

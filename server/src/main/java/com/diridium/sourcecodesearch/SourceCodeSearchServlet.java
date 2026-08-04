@@ -33,8 +33,9 @@ public class SourceCodeSearchServlet extends MirthServlet implements SourceCodeS
             throws ClientException {
         try {
             return searchEngine.count(query, caseSensitive, regex, channelIds,
-                    searchChannels, searchCodeTemplates, searchGlobalScripts,
-                    searchMessageTemplates, searchConnectorProperties, channelFilter());
+                    scope(searchChannels, searchCodeTemplates, searchGlobalScripts,
+                            searchMessageTemplates, searchConnectorProperties),
+                    channelFilter());
         } catch (IllegalArgumentException e) {
             throw new ClientException(e.getMessage());
         } catch (Exception e) {
@@ -51,14 +52,28 @@ public class SourceCodeSearchServlet extends MirthServlet implements SourceCodeS
             throws ClientException {
         try {
             return searchEngine.search(query, caseSensitive, regex, channelIds,
-                    searchChannels, searchCodeTemplates, searchGlobalScripts,
-                    searchMessageTemplates, searchConnectorProperties, channelFilter());
+                    scope(searchChannels, searchCodeTemplates, searchGlobalScripts,
+                            searchMessageTemplates, searchConnectorProperties),
+                    channelFilter());
         } catch (IllegalArgumentException e) {
             throw new ClientException(e.getMessage());
         } catch (Exception e) {
             log.error("Search failed for query: {}", query, e);
             throw new ClientException(e);
         }
+    }
+
+    /**
+     * The REST layer has to take the scope as separate query parameters, since
+     * that is what {@code @QueryParam} binds. Collapsing them here keeps that
+     * shape at the boundary without pushing a row of unlabelled booleans
+     * through the engine.
+     */
+    private static SearchEngine.SearchScope scope(boolean searchChannels, boolean searchCodeTemplates,
+                                                  boolean searchGlobalScripts, boolean searchMessageTemplates,
+                                                  boolean searchConnectorProperties) {
+        return new SearchEngine.SearchScope(searchChannels, searchCodeTemplates, searchGlobalScripts,
+                searchMessageTemplates, searchConnectorProperties);
     }
 
     /**
