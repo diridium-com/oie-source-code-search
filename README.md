@@ -48,6 +48,10 @@ See the [Wiki](https://github.com/diridium-com/oie-source-code-search/wiki) for 
 - [Regex Tips](https://github.com/diridium-com/oie-source-code-search/wiki/Regex-Tips) — common patterns and performance advice
 - [FAQ](https://github.com/diridium-com/oie-source-code-search/wiki/FAQ)
 
+## Design Notes
+
+[docs/design-notes.md](docs/design-notes.md) explains why parts of the plugin are shaped the way they are, particularly its authorization behavior and search scope model, and what the test suite does and does not guarantee. Worth reading before changing anything in the authorization path.
+
 ## Requirements
 
 | Attribute | Value |
