@@ -60,6 +60,70 @@
                             </resources>
                         </configuration>
                     </execution>
+                    <!-- Web Administrator plugin: copied WITHOUT filtering so
+                         literal ${...} tokens in JavaScript survive. -->
+                    <execution>
+                        <id>copy-webadmin</id>
+                        <phase>compile</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.directory}/to-be-packed/webadmin</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>webadmin</directory>
+                                    <filtering>false</filtering>
+                                    <!-- Ship only the runtime plugin (plugin.json +
+                                         the built web/plugin.js); exclude the React
+                                         source + esbuild build tooling. -->
+                                    <excludes>
+                                        <exclude>node_modules/**</exclude>
+                                        <exclude>package.json</exclude>
+                                        <exclude>package-lock.json</exclude>
+                                        <exclude>.gitignore</exclude>
+                                        <exclude>web/build.mjs</exclude>
+                                        <exclude>web/plugin.jsx</exclude>
+                                        <exclude>web/tailwind.css</exclude>
+                                        <exclude>web/scs-css.generated.js</exclude>
+                                    </excludes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Build the React web admin plugin (web/plugin.jsx -> web/plugin.js)
+                 before it is packaged. Runs in generate-resources, ahead of the
+                 copy-webadmin (compile phase) above. -->
+            <plugin>
+                <groupId>com.github.eirslett</groupId>
+                <artifactId>frontend-maven-plugin</artifactId>
+                <version>1.15.1</version>
+                <configuration>
+                    <workingDirectory>webadmin</workingDirectory>
+                    <installDirectory>${project.build.directory}</installDirectory>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>install-node-and-npm</id>
+                        <phase>generate-resources</phase>
+                        <goals><goal>install-node-and-npm</goal></goals>
+                        <configuration><nodeVersion>v20.18.0</nodeVersion></configuration>
+                    </execution>
+                    <execution>
+                        <id>npm-install</id>
+                        <phase>generate-resources</phase>
+                        <goals><goal>npm</goal></goals>
+                        <configuration><arguments>install</arguments></configuration>
+                    </execution>
+                    <execution>
+                        <id>npm-build-webadmin</id>
+                        <phase>generate-resources</phase>
+                        <goals><goal>npm</goal></goals>
+                        <configuration><arguments>run build</arguments></configuration>
+                    </execution>
                 </executions>
             </plugin>
             <plugin>

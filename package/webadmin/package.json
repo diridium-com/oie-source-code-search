@@ -1,0 +1,16 @@
+{
+    "name": "oie-source-code-search-webadmin",
+    "version": "1.2.0",
+    "private": true,
+    "type": "module",
+    "description": "Build for the OIE Source Code Search web administrator plugin (compiles web/plugin.jsx to web/plugin.js).",
+    "scripts": {
+        "build": "node web/build.mjs"
+    },
+    "devDependencies": {
+        "@tailwindcss/postcss": "^4",
+        "esbuild": "^0.21.5",
+        "postcss": "^8",
+        "tailwindcss": "^4"
+    }
+}

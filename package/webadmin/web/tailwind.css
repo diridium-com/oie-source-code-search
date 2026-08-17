@@ -1,0 +1,14 @@
+/* Theme + utilities only — NO preflight (this CSS is injected into the host page; preflight would reset host elements). Tokens map to the host's runtime design-token vars. */
+@layer theme, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@theme inline {
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-glow: var(--accent-glow);
+  --color-line: var(--line);
+  --color-text: var(--text);
+  --color-text-faint: var(--text-faint);
+  --font-mono: var(--font-mono);
+}
+@source "./plugin.jsx";

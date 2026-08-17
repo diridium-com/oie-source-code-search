@@ -1,0 +1,8 @@
+{
+    "id": "source-code-search",
+    "name": "Source Code Search",
+    "version": "1.2.0",
+    "author": "Diridium Technologies Inc.",
+    "description": "Search across channel scripts, code templates, global scripts, message templates, and connector properties.",
+    "client": { "entry": "web/plugin.js" }
+}
