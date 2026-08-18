@@ -23,7 +23,7 @@ name, or magic string is used.
 Install from the Community Store, then **restart the engine**. The Source Code Search
 view then appears in the Administrator.
 
-See the [project README](https://github.com/gibson9583/oie-source-code-search#readme)
+See the [project README](https://github.com/diridium-com/oie-source-code-search#readme)
 for usage and screenshots.
 
 ## Credits

@@ -1,6 +1,6 @@
 {
     "name": "oie-source-code-search-webadmin",
-    "version": "1.2.0",
+    "version": "1.4.0",
     "private": true,
     "type": "module",
     "description": "Build for the OIE Source Code Search web administrator plugin (compiles web/plugin.jsx to web/plugin.js).",

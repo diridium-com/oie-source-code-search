@@ -56,8 +56,32 @@ export function register(platform) {
 
     /* ---- engine response normalization ---------------------------------- */
 
-    /* GET /count returns a bare int; XStream JSON wraps scalars ({"int": 5})
-       and the api client unwraps single-key roots, but stay defensive. */
+    /* Both /count and /search return a SearchResults envelope
+       { matchCount, skippedChannelCount, restricted, matches } — matches is
+       null for count responses. The envelope exists so a role-restricted user
+       can tell "no matches" from "matches only in channels you cannot see".
+       The api client unwraps single-key roots ({"searchResults": {...}}), but
+       stay defensive about the wrapper and about pre-envelope shapes. */
+    function parseEnvelope(value) {
+        if (!value || typeof value !== 'object') return null;
+        if ('matchCount' in value) return value;
+        const keys = Object.keys(value);
+        if (keys.length === 1 && value[keys[0]] && typeof value[keys[0]] === 'object'
+                && 'matchCount' in value[keys[0]]) {
+            return value[keys[0]];
+        }
+        return null;
+    }
+
+    function restrictedSuffix(env) {
+        if (!env || String(env.restricted) !== 'true') return '';
+        const skipped = asInt(env.skippedChannelCount);
+        return ' Results are limited by your role'
+            + (skipped > 0 ? ' (' + skipped + (skipped === 1 ? ' channel' : ' channels') + ' not searched).' : '.');
+    }
+
+    /* XStream JSON wraps scalars ({"int": 5}) and the api client unwraps
+       single-key roots, but stay defensive. */
     function asInt(value) {
         if (typeof value === 'number') return value;
         if (value && typeof value === 'object') {
@@ -84,26 +108,20 @@ export function register(platform) {
         };
     }
 
-    /* Map<String,String> from /channels/idsAndNames:
-       { entry: [{ string: [id, name] }, ...] } — singletons as a bare object. */
-    function idNamePairs(map) {
-        const out = [];
-        if (!map || typeof map !== 'object') return out;
-        for (const entry of api.asList(map.entry)) {
-            if (!entry || typeof entry !== 'object') continue;
-            if (Array.isArray(entry.string)) {
-                out.push({
-                    id: String(entry.string[0]),
-                    name: String(entry.string[1] !== undefined ? entry.string[1] : entry.string[0])
-                });
-                continue;
-            }
-            const vals = Object.entries(entry)
-                .filter(([k]) => !k.startsWith('@'))
-                .map(([, v]) => v);
-            if (vals.length >= 2) out.push({ id: String(vals[0]), name: String(vals[1]) });
-        }
-        return out.sort((a, b) => a.name.localeCompare(b.name));
+    /* Channel row for the scope selector — same field recipes as the host's
+       Channels view: enabled comes from exportData.metadata.enabled (defaults
+       true; XStream JSON may deliver it as the string "false"), data type from
+       the source connector's inbound transformer type. */
+    function normalizeChannel(c) {
+        if (!c || typeof c !== 'object') return null;
+        const meta = c.exportData && c.exportData.metadata;
+        return {
+            id: String(c.id ?? ''),
+            name: String(c.name ?? ''),
+            dataType: String(c.sourceConnector?.transformer?.inboundDataType ?? ''),
+            enabled: !meta || String(meta.enabled) !== 'false',
+            description: String(c.description ?? '').replace(/\s+/g, ' ').trim()
+        };
     }
 
     /* ---- match highlighting (same semantics as the Swing dialog) -------- */
@@ -236,16 +254,40 @@ export function register(platform) {
         React.useEffect(() => { queryInputRef.current && queryInputRef.current.focus(); }, []);
 
         async function loadChannels() {
-            let pairs;
+            let rows;
             try {
-                pairs = idNamePairs(await api.channels.idsAndNames());
+                rows = (await api.channels.list()).map(normalizeChannel).filter(Boolean);
             } catch (e) {
                 setChannels([]);
                 toast('Failed to load channels: ' + e.message, 'error');
                 return;
             }
-            setChannels(pairs);
+            setChannels(rows);
         }
+
+        /* ---- channel table sorting (default: by name) ---- */
+        const [chSort, setChSort] = React.useState({ key: 'name', dir: 1 });
+
+        function toggleChSort(key) {
+            setChSort((s) => (s.key === key ? { key, dir: -s.dir } : { key, dir: 1 }));
+        }
+
+        const sortedChannels = React.useMemo(() => {
+            if (!channels) return channels;
+            const { key, dir } = chSort;
+            return [...channels].sort((a, b) => {
+                const va = a[key], vb = b[key];
+                if (typeof va === 'boolean') return (va === vb ? 0 : va ? -1 : 1) * dir;
+                return String(va).localeCompare(String(vb)) * dir;
+            });
+        }, [channels, chSort]);
+
+        const ChTh = ({ col, label }) => (
+            <th className="text-left font-semibold py-[4px] px-[8px] cursor-pointer select-none whitespace-nowrap"
+                onClick={() => toggleChSort(col)}>
+                {label}{chSort.key === col ? (chSort.dir > 0 ? ' ▴' : ' ▾') : ''}
+            </th>
+        );
 
         function onScopeChange(value) {
             setScope(value);
@@ -335,12 +377,15 @@ export function register(platform) {
 
             try {
                 // Phase 1: count (query string params match the servlet exactly).
-                const matchCount = asInt(await api.get(EXT + '/count', params));
+                const countRaw = await api.get(EXT + '/count', params);
+                const countEnv = parseEnvelope(countRaw);
+                const matchCount = countEnv ? asInt(countEnv.matchCount) : asInt(countRaw);
                 setNotInstalledStatus(null);
 
                 if (matchCount === 0) {
-                    setStatus('No matches found.');
-                    setResultsState({ kind: 'hint', text: 'No matches found.' });
+                    const suffix = restrictedSuffix(countEnv);
+                    setStatus('No matches found.' + suffix);
+                    setResultsState({ kind: 'hint', text: 'No matches found.' + suffix });
                     return;
                 }
                 if (matchCount >= RESULT_WARNING_THRESHOLD) {
@@ -357,7 +402,11 @@ export function register(platform) {
                 // Phase 2: full results.
                 setStatus('Searching…');
                 setResultsState({ kind: 'loading', text: 'Searching…' });
-                const raw = api.asList(await api.get(EXT + '/search', params), 'searchMatch');
+                const searchRaw = await api.get(EXT + '/search', params);
+                const searchEnv = parseEnvelope(searchRaw);
+                const raw = searchEnv
+                    ? api.asList(searchEnv.matches, 'searchMatch')
+                    : api.asList(searchRaw, 'searchMatch');
                 const matches = raw.map(normalizeMatch).filter(Boolean);
 
                 setResults(matches);
@@ -368,9 +417,18 @@ export function register(platform) {
                     m.groupType + ':' + (m.channelId || m.channelName))).size;
                 setStatus(matches.length
                     + (matches.length === 1 ? ' match' : ' matches') + ' in '
-                    + artifactCount + (artifactCount === 1 ? ' artifact' : ' artifacts') + '.');
+                    + artifactCount + (artifactCount === 1 ? ' artifact' : ' artifacts') + '.'
+                    + restrictedSuffix(searchEnv));
                 setResultsState({ kind: 'results', matches, params });
             } catch (e) {
+                if (e && e.status === 403) {
+                    const denied = 'You do not have the "Search Source Code" permission. '
+                        + 'Ask an administrator to grant it to your role.';
+                    setStatus('Permission denied.');
+                    setResultsState({ kind: 'hint', text: denied });
+                    toast(denied, 'warn');
+                    return;
+                }
                 setResultsState({ kind: 'hint', text: 'Search failed: ' + e.message });
                 setStatus('Search failed.');
                 if (notInstalled(e)) {
@@ -566,7 +624,7 @@ export function register(platform) {
                                 <div className="flex flex-wrap gap-y-[4px] gap-x-[18px] items-center">
                                     <select value={mode} onChange={(e) => setMode(e.target.value)}>
                                         <option value="literal">Literal</option>
-                                        <option value="regex">Regular Expression</option>
+                                        <option value="regex">Regular Expression (Java)</option>
                                     </select>
                                     <label className="check">
                                         <input type="checkbox" checked={caseSensitive}
@@ -574,6 +632,11 @@ export function register(platform) {
                                         Case Sensitive
                                     </label>
                                 </div>
+                                {mode === 'regex' && (
+                                    <div className="hint">
+                                        Matching runs on the engine using Java regex syntax (java.util.regex), not JavaScript.
+                                    </div>
+                                )}
                             </div>
 
                             <div className="field">
@@ -614,20 +677,43 @@ export function register(platform) {
                                         <option value="all">All Channels</option>
                                         <option value="selected">Selected Channels</option>
                                     </select>
-                                    <div className="flex flex-col gap-[2px] max-h-[180px] overflow-auto min-w-[320px] max-w-[460px] border border-line rounded-[3px] py-[6px] px-[10px] mt-[6px]" style={{ display: scope === 'selected' ? '' : 'none' }}>
+                                    <div className="max-h-[240px] overflow-auto min-w-[320px] max-w-[860px] border border-line rounded-[3px] mt-[6px]" style={{ display: scope === 'selected' ? '' : 'none' }}>
                                         {channels === null ? (
-                                            <div className="hint">Loading channels…</div>
+                                            <div className="hint py-[6px] px-[10px]">Loading channels…</div>
                                         ) : !channels.length ? (
-                                            <div className="hint">No channels available</div>
+                                            <div className="hint py-[6px] px-[10px]">No channels available</div>
                                         ) : (
-                                            channels.map((ch) => (
-                                                <label className="check" key={ch.id}>
-                                                    <input type="checkbox"
-                                                        checked={selectedIds.has(ch.id)}
-                                                        onChange={(e) => toggleChannel(ch.id, e.target.checked)} />
-                                                    {ch.name}
-                                                </label>
-                                            ))
+                                            <table className="w-full text-[12px] border-collapse">
+                                                <thead>
+                                                    <tr className="border-b border-line">
+                                                        <th className="w-[28px] py-[4px] px-[8px]"></th>
+                                                        <ChTh col="enabled" label="Status" />
+                                                        <ChTh col="dataType" label="Data Type" />
+                                                        <ChTh col="name" label="Name" />
+                                                        <ChTh col="id" label="Id" />
+                                                        <ChTh col="description" label="Description" />
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {sortedChannels.map((ch) => (
+                                                        <tr key={ch.id} className="cursor-pointer hover:bg-accent-glow"
+                                                            onClick={() => toggleChannel(ch.id, !selectedIds.has(ch.id))}>
+                                                            <td className="py-[3px] px-[8px]">
+                                                                <input type="checkbox"
+                                                                    checked={selectedIds.has(ch.id)}
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                    onChange={(e) => toggleChannel(ch.id, e.target.checked)} />
+                                                            </td>
+                                                            <td className="py-[3px] px-[8px] whitespace-nowrap">{ch.enabled ? 'Enabled' : 'Disabled'}</td>
+                                                            <td className="py-[3px] px-[8px] whitespace-nowrap">{ch.dataType}</td>
+                                                            <td className="py-[3px] px-[8px]">{ch.name}</td>
+                                                            <td className="py-[3px] px-[8px] font-mono text-[11px] whitespace-nowrap">{ch.id}</td>
+                                                            <td className="py-[3px] px-[8px] text-text-faint max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap"
+                                                                title={ch.description}>{ch.description}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
                                         )}
                                     </div>
                                 </div>

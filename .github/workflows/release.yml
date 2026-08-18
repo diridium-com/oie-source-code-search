@@ -1,11 +1,18 @@
-# Publishes the plugin to GitHub Releases in the shape the OIE Community Store
-# expects (extension zip + .sha256 sidecar), on a semver tag:
+# Builds the plugin on a semver tag and stages a DRAFT GitHub Release with the
+# unsigned zip + .sha256 sidecar:
 #
-#   git tag v1.2.0 && git push <remote> v1.2.0
+#   git tag v1.4.0 && git push origin v1.4.0
+#
+# The draft is never published by CI. Release flow from here: build and sign
+# locally (YubiKey, -Psigning), replace the draft's zip AND regenerate its
+# .sha256 sidecar from the signed zip, publish by hand, then run the "Catalog PR"
+# workflow (catalog.yml) to submit the published release to the community catalog.
 #
 # The tag drives the Maven version via -Drevision, so plugin.xml's pluginVersion
 # (what the engine reports as "installed") matches oie.json, keeping the store's
-# update detection accurate. oie.json is verified to match the tag.
+# update detection accurate. oie.json is verified to match the tag. The engine
+# version comes from the POM's mc.version (see build.yml for why it is not
+# hardcoded here).
 
 name: Release
 
@@ -16,11 +23,6 @@ on:
 
 permissions:
   contents: write        # required to create the GitHub Release
-
-env:
-  OIE_TAG: v4.6.0-rc1
-  OIE_TARBALL: oie_unix_4_6_0-rc1.tar.gz
-  MC_VERSION: '4.6.0'
 
 jobs:
   release:
@@ -46,18 +48,36 @@ jobs:
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve the engine version from the POM
+        id: engine
+        run: |
+          MC_VERSION="$(mvn -q -N help:evaluate -Dexpression=mc.version -DforceStdout)"
+          if [ -z "$MC_VERSION" ]; then
+            echo "::error::Could not read mc.version from pom.xml"
+            exit 1
+          fi
+          echo "mc_version=$MC_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v${MC_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tarball=oie_unix_${MC_VERSION//./_}.tar.gz" >> "$GITHUB_OUTPUT"
+
       - name: Cache OIE distribution
         id: oie-cache
         uses: actions/cache@v4
         with:
-          path: ${{ env.OIE_TARBALL }}
-          key: oie-dist-${{ env.OIE_TAG }}
+          path: ${{ steps.engine.outputs.tarball }}
+          key: oie-dist-${{ steps.engine.outputs.tag }}
 
       - name: Download OIE distribution
         if: steps.oie-cache.outputs.cache-hit != 'true'
+        env:
+          OIE_TAG: ${{ steps.engine.outputs.tag }}
+          OIE_TARBALL: ${{ steps.engine.outputs.tarball }}
         run: curl -fSL -o "$OIE_TARBALL" "https://github.com/OpenIntegrationEngine/engine/releases/download/${OIE_TAG}/${OIE_TARBALL}"
 
       - name: Install engine jars into the local Maven repo
+        env:
+          OIE_TARBALL: ${{ steps.engine.outputs.tarball }}
+          MC_VERSION: ${{ steps.engine.outputs.mc_version }}
         run: |
           tar xzf "$OIE_TARBALL" \
             oie/server-lib/mirth-server.jar \
@@ -96,94 +116,13 @@ jobs:
           ( cd out && sha256sum "${ASSET}" > "${ASSET}.sha256" )
           echo "asset=${ASSET}" >> "$GITHUB_OUTPUT"
 
-      - name: Create GitHub Release with assets
+      - name: Create DRAFT GitHub Release with assets
+        # Stays a draft: the zip is unsigned. A human signs locally, replaces the
+        # zip and its .sha256 sidecar, and publishes; catalog.yml runs after that.
         uses: softprops/action-gh-release@v2
         with:
+          draft: true
           files: |
             out/${{ steps.pkg.outputs.asset }}
             out/${{ steps.pkg.outputs.asset }}.sha256
           prerelease: ${{ contains(github.ref_name, '-') }}
-
-  # Auto-files the version manifest PR to the community catalog. Appended to this
-  # workflow because the release above is created with GITHUB_TOKEN, which does
-  # NOT fire `on: release` for a standalone workflow. Requires the CATALOG_TOKEN
-  # secret (fine-grained PAT: Contents + Pull requests read/write on the catalog).
-  catalog-manifest:
-    needs: release
-    runs-on: ubuntu-latest
-    env:
-      CATALOG_REPO: gibson9583/oie-community-catalog
-      PLUGIN_ID: oie-source-code-search
-      GH_TOKEN: ${{ secrets.CATALOG_TOKEN }}
-    steps:
-      - name: Require the catalog token
-        run: |
-          if [ -z "$GH_TOKEN" ]; then
-            echo "::error::CATALOG_TOKEN secret is not set — cannot open the catalog PR."
-            exit 1
-          fi
-
-      - name: Resolve tag, download and digest the release asset
-        run: |
-          TAG="${GITHUB_REF_NAME}"
-          VERSION="${TAG#v}"
-          echo "TAG=$TAG" >> "$GITHUB_ENV"
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          # Public asset URL, no auth: the CATALOG_TOKEN is scoped to the catalog
-          # repo and must not be relied on for reads here. Retry: the asset was
-          # uploaded moments ago by the release job.
-          curl -fL --retry 5 --retry-delay 5 -o asset.zip \
-            "https://github.com/${{ github.repository }}/releases/download/${TAG}/${PLUGIN_ID}-${VERSION}.zip"
-          echo "SHA256=$(sha256sum asset.zip | cut -d' ' -f1)" >> "$GITHUB_ENV"
-
-      - name: Read manifest fields from the tagged oie.json
-        run: |
-          curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/$TAG/oie.json" -o oie.json
-          echo "MIN_ENGINE=$(node -p "JSON.parse(require('fs').readFileSync('oie.json','utf8')).minEngineVersion")" >> "$GITHUB_ENV"
-          echo "STORE_DOCS=$(node -p "JSON.parse(require('fs').readFileSync('oie.json','utf8')).storeDocs || 'docs/store.md'")" >> "$GITHUB_ENV"
-
-      - uses: actions/checkout@v4
-        with:
-          repository: gibson9583/oie-community-catalog
-          token: ${{ secrets.CATALOG_TOKEN }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Write the version manifest
-        run: |
-          mkdir -p "manifests/plugins/${PLUGIN_ID}"
-          cat > "manifests/plugins/${PLUGIN_ID}/${VERSION}.json" <<EOF
-          {
-              "version": "${VERSION}",
-              "minEngineVersion": "${MIN_ENGINE}",
-              "maxEngineVersion": null,
-              "installerUrl": "https://github.com/${{ github.repository }}/releases/download/${TAG}/${PLUGIN_ID}-${VERSION}.zip",
-              "sha256": "${SHA256}",
-              "restartRequired": true,
-              "publishedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-              "releaseNotesUrl": "https://github.com/${{ github.repository }}/releases/tag/${TAG}",
-              "docsUrl": "https://raw.githubusercontent.com/${{ github.repository }}/${TAG}/${STORE_DOCS}"
-          }
-          EOF
-
-      - name: Validate (schema + digest download)
-        run: node scripts/build-index.mjs --lint --verify "manifests/plugins/${PLUGIN_ID}/${VERSION}.json"
-
-      - name: Open the catalog PR
-        run: |
-          BRANCH="${PLUGIN_ID}-${VERSION}"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH"
-          git add manifests
-          git commit -m "${PLUGIN_ID} ${VERSION}"
-          git push -f origin "$BRANCH"
-          if gh pr list -R "$CATALOG_REPO" --head "$BRANCH" --json number -q '.[0].number' | grep -q .; then
-            echo "PR already open for $BRANCH — branch updated."
-          else
-            gh pr create -R "$CATALOG_REPO" --head "$BRANCH" \
-              --title "${PLUGIN_ID} ${VERSION}" \
-              --body "Automated manifest for [${PLUGIN_ID} ${TAG}](https://github.com/${{ github.repository }}/releases/tag/${TAG}). Digest computed from the release asset and verified again by catalog CI."
-          fi
