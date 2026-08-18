@@ -11,3 +11,6 @@ yubikey-pkcs11.cfg
 certchain.pem
 *.swp
 wiki/
+
+# Tailwind build intermediate (inlined into web/plugin.js by esbuild)
+package/webadmin/web/scs-css.generated.js

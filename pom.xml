@@ -15,7 +15,7 @@
     <packaging>pom</packaging>
 
     <properties>
-        <revision>1.3.0</revision>
+        <revision>1.4.0</revision>
 
         <plugin.supported.mc.versions>${mc.version}</plugin.supported.mc.versions>
 
