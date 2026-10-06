@@ -34,7 +34,7 @@ A partial result set that looks complete is worse than a denial, particularly be
 
 The skipped-channel **count** is disclosed on purpose. It tells a restricted user how much was withheld, which is what they need in order to judge whether to ask for access. The alternative wording, "some channels were excluded," withholds that at no security benefit worth the ambiguity.
 
-Search **queries are written to the audit log**, since both operations are auditable and the query is a parameter. This is intended: an audit event that cannot say what was searched cannot answer the question it exists for. Be aware that a search for a patient identifier records that identifier in the event log.
+Search **queries are written to the audit log**, since both operations are auditable and the query is a parameter. This is intended: an audit event that cannot say what was searched cannot answer the question it exists for. Be aware that a search for a patient identifier records that identifier in the event log. That matches the engine's own audit behavior: its only `excludeFromAudit` parameters are passwords, so a message search records its search text and Send Message records the entire raw message (checked against the 4.6.0 engine source, 2026-10-06).
 
 ---
 

@@ -61,18 +61,16 @@ See the [Wiki](https://github.com/diridium-com/oie-source-code-search/wiki) for 
 
 ## Installation
 
-Download the latest release ZIP from the [Releases](https://github.com/diridium-com/oie-source-code-search/releases) page and install it through the OIE Administrator plugin manager.
+Install it from the OIE Community Store, or download the latest release ZIP from the [Releases](https://github.com/diridium-com/oie-source-code-search/releases) page and install it through the OIE Administrator plugin manager.
 
 ## Building from Source
 
-The public repsy mirror at `repo.repsy.io/mvn/kpalang/mirthconnect` does not yet carry the 4.6.0 engine artifacts. Build the engine (`ant` in `donkey/` then `server/`) from a sibling checkout, then run:
-
 ```
-ENGINE_DIR=/path/to/engine ./scripts/install-engine-jars.sh
+./scripts/install-engine-jars.sh
 mvn verify
 ```
 
-The script installs `mirth-server`, `donkey-server`, `mirth-client-core`, and `mirth-client` at version 4.6.0 into your local Maven repository. If `ENGINE_DIR` is unset, it defaults to `../engine` relative to this repo.
+The script installs `mirth-server`, `donkey-server`, `mirth-client-core`, and `mirth-client` into your local Maven repository, taken from the published OIE release matching the POM's `mc.version` and checked against that release's `sha256sums`. Run it once per engine version.
 
 ## License
 
