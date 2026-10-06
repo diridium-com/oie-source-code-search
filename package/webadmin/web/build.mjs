@@ -3,13 +3,12 @@
  *
  * Compiles the JSX source (web/plugin.jsx) to the plain-ESM file the host
  * serves raw and plugin.json points to (web/plugin.js). The browser can't run
- * JSX, so this MUST run before the committed plugin.js is up to date.
+ * JSX, so the bundle has to be built before packaging.
  *
- * IMPORTANT: run `npm run build` BEFORE `mvn package`. The repo packages
- * webadmin/ via maven-resources-plugin (filtering=false), copying files
- * verbatim — so web/plugin.js is a build artifact that must be regenerated and
- * committed whenever web/plugin.jsx changes. (Committing the built plugin.js is
- * sufficient for now; do not restructure the Maven build.)
+ * The Maven build runs this through frontend-maven-plugin (npm install, then
+ * npm run build) in the package module, so `mvn package` regenerates
+ * web/plugin.js every time. plugin.js is a build output: it is gitignored and
+ * never committed.
  *
  * The @oie/* packages stay EXTERNAL — the host's import map resolves them at
  * runtime; they are never bundled.
