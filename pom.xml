@@ -15,15 +15,19 @@
     <packaging>pom</packaging>
 
     <properties>
-        <revision>1.4.1</revision>
+        <revision>1.5.0</revision>
 
-        <plugin.supported.mc.versions>${mc.version}</plugin.supported.mc.versions>
+        <!-- Temporary: 1.5.0 targets OIE 4.7.0 but compiles against the 4.6.0 engine jars,
+             because 4.7.0 wasn't published when it shipped. The engine APIs oie-source-code-search
+             uses are the same in both (checked 2026-10-16). In the next release, set mc.version
+             to 4.7.0 and set this back to ${mc.version}. -->
+        <plugin.supported.mc.versions>4.7.0</plugin.supported.mc.versions>
 
         <mc.version>4.6.0</mc.version>
-        <javax-servlet.version>4.0.1</javax-servlet.version>
+        <javax-servlet.version>3.1.0</javax-servlet.version>
         <javax-rs-api.version>2.0.1</javax-rs-api.version>
-        <xstream.version>1.4.18</xstream.version>
-        <slf4j.version>1.7.32</slf4j.version>
+        <xstream.version>1.4.20</xstream.version>
+        <slf4j.version>1.7.30</slf4j.version>
         <junit5.version>5.10.2</junit5.version>
         <!-- Match the version the engine ships (gradle/libs.versions.toml). -->
         <reflections.version>0.9.10</reflections.version>
