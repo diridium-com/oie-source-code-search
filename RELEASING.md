@@ -10,11 +10,11 @@ Every release is signed. CI builds an unsigned draft, the signed build is made w
 Change all of these in the commit you tag:
 
 - `<revision>` in the parent `pom.xml`
-- `version` in `oie.json` (the release workflow fails if it does not match the tag)
+- `version` in `oie.json`
 - `version` in `package/webadmin/plugin.json`
 - `version` in `package/webadmin/package.json`, and the two root entries in `package/webadmin/package-lock.json`
 
-CI stamps the tag into the build on its own, but the signed build is made from the committed files, so they have to agree.
+The release workflow fails if any of them does not match the tag, or if `oie.json`'s `minEngineVersion` and `maxEngineVersion` differ from the POM's `plugin.supported.mc.versions`, the only engine version the plugin loads on. CI and the signed build both build the committed files as they are.
 
 ## 2. Tag
 

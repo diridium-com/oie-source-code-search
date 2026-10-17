@@ -31,7 +31,8 @@ it, or those users lose search.
 
 ## Requirements
 
-- Open Integration Engine **4.6.0** or newer.
+- Open Integration Engine **4.7.0**. For OIE 4.6.0, use Source Code Search 1.4.1.
+  The engine only loads a plugin built for its exact version.
 - An engine restart after install to activate the plugin.
 
 ## Installing

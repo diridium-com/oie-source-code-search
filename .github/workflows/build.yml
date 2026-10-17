@@ -21,16 +21,21 @@ permissions:
   contents: read
 
 jobs:
+  # Tests on 17 and on 21, the Java the OIE 4.7.0 installers bundle. Both compile to Java 17 (<release>17).
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['17', '21']
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK ${{ matrix.java }}
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: ${{ matrix.java }}
           cache: maven
 
       # The engine version lives in exactly one place, the POM's mc.version. Hardcoding
