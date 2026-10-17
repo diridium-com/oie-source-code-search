@@ -29,8 +29,12 @@ git tag vX.Y.Z && git push origin vX.Y.Z
 Check out the tag on the machine with the YubiKey. If its local Maven repository does not have the engine jars for this `mc.version` yet, run `./scripts/install-engine-jars.sh` first. The `signing` profile also needs `yubikey-pkcs11.cfg` and `certchain.pem` in the repo root; both are gitignored. From the repo root:
 
 ```bash
-mvn clean package -Psigning -Dsigning.storepass=<yubikey-pin>
+read -rs PIN
+mvn clean package -Psigning -Dsigning.storepass="$PIN"
+unset PIN
 ```
+
+`read -s` takes the PIN without echoing it or leaving it in your shell history. The variable isn't exported, so only Maven gets the PIN, not the processes the build starts (npm, and the install scripts it runs).
 
 Copy `package/target/oie-source-code-search-X.Y.Z.zip` somewhere safe right away. A later `mvn clean` deletes it, and it cannot be rebuilt without the key.
 
