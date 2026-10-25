@@ -5,7 +5,7 @@
  * serves raw and plugin.json points to (web/plugin.js). The browser can't run
  * JSX, so the bundle has to be built before packaging.
  *
- * The Maven build runs this through frontend-maven-plugin (npm install, then
+ * The Maven build runs this through frontend-maven-plugin (npm ci, then
  * npm run build) in the package module, so `mvn package` regenerates
  * web/plugin.js every time. plugin.js is a build output: it is gitignored and
  * never committed.
