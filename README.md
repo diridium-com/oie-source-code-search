@@ -72,7 +72,7 @@ Install it from the OIE Community Store, or download the latest release ZIP from
 mvn verify
 ```
 
-The script installs `mirth-server`, `donkey-server`, `mirth-client-core`, and `mirth-client` into your local Maven repository, taken from the published OIE release matching the POM's `mc.version` and checked against that release's `sha256sums`. Run it once per engine version.
+The script installs `mirth-server`, `donkey-server`, `mirth-client-core`, and `mirth-client` into your local Maven repository, taken from the published OIE release matching the POM's `mc.version` and checked against the SHA-256 pinned in the POM (`oie.dist.sha256`); CI runs the same script. Run it once per engine version.
 
 ## License
 

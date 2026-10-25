@@ -2,7 +2,7 @@
 
 Why parts of this plugin are shaped the way they are, and what the test suite does and does not guarantee. Written for someone changing the code, so that decisions made deliberately are not undone by accident.
 
-Last updated 2026-08-04 (1.3.0).
+Last updated 2026-10-25.
 
 ---
 
@@ -78,8 +78,16 @@ The obstacle is testability rather than effort, and it is worth understanding be
 
 Authorization behavior was verified manually against a running role-based server for 1.3.0: the permission appears in the role editor, a role without it is denied, and a channel-restricted role sees only its own channels with the exclusion notice and a matching skipped count. That is point-in-time evidence, not ongoing coverage, and should be repeated on any change to the authorization path.
 
-**CI** (`.github/workflows/build.yml`) runs on every push to `main` and every pull request. It resolves the engine version from the POM's `mc.version`, installs the engine jars from the published OIE distribution tarball, and runs `mvn clean verify`. A final step fails the build if no surefire reports were produced, so a change that silently skips the suite cannot pass as green.
+**CI** (`.github/workflows/build.yml`) runs on every push to `main` and every pull request. It resolves the engine version from the POM's `mc.version`, installs the engine jars with `scripts/install-engine-jars.sh`, which checks the published OIE distribution tarball against `oie.dist.sha256` first, and runs `mvn clean verify`. A final step fails the build if no surefire reports were produced, so a change that silently skips the suite cannot pass as green.
 
 **Expected build warning**, not a defect: `SLF4J: Failed to load class "org.slf4j.impl.StaticLoggerBinder"` during tests. No SLF4J binder is on the test classpath, because logging is provided by the engine at runtime.
 
 **Known build-environment limitation:** the project uses `${revision}` for CI-friendly versioning without `flatten-maven-plugin`, so installed POMs contain the literal placeholder. The reactor build is unaffected, but per-module tooling such as `dependency:build-classpath` cannot resolve a sibling module.
+
+---
+
+## 2026-10-25: compiled against OIE 4.7.0
+
+Release 1.5.0 targets OIE 4.7.0 but was compiled against the 4.6.0 engine jars, because 4.7.0 wasn't published when it shipped. The engine APIs this plugin uses are the same in both. OIE 4.7.0 was published on 2026-10-21. Its tag is commit `f9ba73e28`, and its `oie_unix_4_7_0.tar.gz` has the SHA-256 `ab08558873dc6be1e474afaacc46efe94d29c945cd3381c10d0ae548ecb429de`, the same commit and tarball 1.5.0 was tested against, so that testing applies to the published engine. `mc.version` is now 4.7.0 and `plugin.supported.mc.versions` is back to `${mc.version}`, which ends the split.
+
+That SHA-256 is now pinned in the POM as `oie.dist.sha256`. `scripts/install-engine-jars.sh` used to check the tarball against the `sha256sums` file it downloaded from the same release, which only shows the two downloads agree with each other. It now checks against the pinned value, and CI runs the script instead of keeping its own copy of the jar list.
