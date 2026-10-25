@@ -98,47 +98,25 @@ jobs:
       - name: Resolve the engine version from the POM
         id: engine
         run: |
-          MC_VERSION="$(mvn -q -N help:evaluate -Dexpression=mc.version -DforceStdout)"
+          MC_VERSION="$(mvn -q -N org.apache.maven.plugins:maven-help-plugin:3.5.1:evaluate -Dexpression=mc.version -DforceStdout)"
           if [ -z "$MC_VERSION" ]; then
             echo "::error::Could not read mc.version from pom.xml"
             exit 1
           fi
           echo "mc_version=$MC_VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v${MC_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "tarball=oie_unix_${MC_VERSION//./_}.tar.gz" >> "$GITHUB_OUTPUT"
 
       - name: Cache OIE distribution
-        id: oie-cache
         uses: actions/cache@v4
         with:
-          path: ${{ steps.engine.outputs.tarball }}
-          key: oie-dist-${{ steps.engine.outputs.tag }}
+          path: .oie-dist
+          key: oie-dist-${{ steps.engine.outputs.mc_version }}
 
-      - name: Download OIE distribution
-        if: steps.oie-cache.outputs.cache-hit != 'true'
-        env:
-          OIE_TAG: ${{ steps.engine.outputs.tag }}
-          OIE_TARBALL: ${{ steps.engine.outputs.tarball }}
-        run: curl -fSL -o "$OIE_TARBALL" "https://github.com/OpenIntegrationEngine/engine/releases/download/${OIE_TAG}/${OIE_TARBALL}"
-
+      # The same script build.yml and local builds use: it checks the distribution against
+      # the SHA-256 in the POM before installing the engine jars from it.
       - name: Install engine jars into the local Maven repo
         env:
-          OIE_TARBALL: ${{ steps.engine.outputs.tarball }}
-          MC_VERSION: ${{ steps.engine.outputs.mc_version }}
-        run: |
-          tar xzf "$OIE_TARBALL" \
-            oie/server-lib/mirth-server.jar \
-            oie/server-lib/mirth-client-core.jar \
-            oie/client-lib/mirth-client.jar \
-            oie/server-lib/donkey/donkey-server.jar
-          for pair in \
-            "mirth-server:oie/server-lib/mirth-server.jar" \
-            "mirth-client-core:oie/server-lib/mirth-client-core.jar" \
-            "mirth-client:oie/client-lib/mirth-client.jar" \
-            "donkey-server:oie/server-lib/donkey/donkey-server.jar"; do
-            a="${pair%%:*}"; p="${pair#*:}"
-            mvn -q install:install-file -Dfile="$p" -DgroupId=com.mirth.connect -DartifactId="$a" -Dversion="$MC_VERSION" -Dpackaging=jar
-          done
+          OIE_DIST_CACHE: ${{ github.workspace }}/.oie-dist
+        run: ./scripts/install-engine-jars.sh
 
       - name: Build
         run: mvn -B -ntp -DskipTests package

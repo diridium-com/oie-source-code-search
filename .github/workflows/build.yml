@@ -3,11 +3,11 @@
 #
 # Builds and tests every push to main and every pull request.
 #
-# The engine jars this plugin compiles against are not on the public repsy
-# mirror at 4.6.0, so they come from the published OIE distribution, the same
-# tarball scripts/install-engine-jars.sh uses for local builds. The tarball is
-# cached by tag, so it is downloaded once and reused until the pinned version
-# changes.
+# The engine jars this plugin compiles against come from the published OIE
+# distribution, installed by scripts/install-engine-jars.sh, the same script
+# local builds use, which checks the tarball against the SHA-256 pinned in the
+# POM (oie.dist.sha256). The tarball is cached by engine version, so it is
+# downloaded once and reused until the pinned version changes.
 
 name: Build
 
@@ -38,57 +38,31 @@ jobs:
           java-version: ${{ matrix.java }}
           cache: maven
 
-      # The engine version lives in exactly one place, the POM's mc.version. Hardcoding
-      # it here as well meant a future engine bump could leave CI installing 4.6.0 jars
-      # while the build compiled against something else, with nothing to catch it.
-      # The release tag and tarball name are mechanical transforms of that version, so
-      # if OIE ever changes its asset naming the download 404s loudly rather than
-      # resolving something stale.
+      # The engine version lives in exactly one place, the POM's mc.version, and the
+      # tarball's SHA-256 beside it; the cache is keyed by that version.
       - name: Resolve the engine version from the POM
         id: engine
         run: |
-          MC_VERSION="$(mvn -q -N help:evaluate -Dexpression=mc.version -DforceStdout)"
+          MC_VERSION="$(mvn -q -N org.apache.maven.plugins:maven-help-plugin:3.5.1:evaluate -Dexpression=mc.version -DforceStdout)"
           if [ -z "$MC_VERSION" ]; then
             echo "::error::Could not read mc.version from pom.xml"
             exit 1
           fi
           echo "mc_version=$MC_VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v${MC_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "tarball=oie_unix_${MC_VERSION//./_}.tar.gz" >> "$GITHUB_OUTPUT"
 
       - name: Cache OIE distribution
-        id: oie-cache
         uses: actions/cache@v4
         with:
-          path: ${{ steps.engine.outputs.tarball }}
-          key: oie-dist-${{ steps.engine.outputs.tag }}
+          path: .oie-dist
+          key: oie-dist-${{ steps.engine.outputs.mc_version }}
 
-      - name: Download OIE distribution
-        if: steps.oie-cache.outputs.cache-hit != 'true'
-        env:
-          OIE_TAG: ${{ steps.engine.outputs.tag }}
-          OIE_TARBALL: ${{ steps.engine.outputs.tarball }}
-        run: curl -fSL -o "$OIE_TARBALL" "https://github.com/OpenIntegrationEngine/engine/releases/download/${OIE_TAG}/${OIE_TARBALL}"
-
-      # The same four jars scripts/install-engine-jars.sh installs locally.
+      # The script local builds use: it downloads the distribution if the cache
+      # missed, checks it against the SHA-256 in the POM, and installs the four
+      # engine jars.
       - name: Install engine jars into the local Maven repo
         env:
-          OIE_TARBALL: ${{ steps.engine.outputs.tarball }}
-          MC_VERSION: ${{ steps.engine.outputs.mc_version }}
-        run: |
-          tar xzf "$OIE_TARBALL" \
-            oie/server-lib/mirth-server.jar \
-            oie/server-lib/mirth-client-core.jar \
-            oie/server-lib/donkey/donkey-server.jar \
-            oie/client-lib/mirth-client.jar
-          for pair in \
-            "mirth-server:oie/server-lib/mirth-server.jar" \
-            "mirth-client-core:oie/server-lib/mirth-client-core.jar" \
-            "donkey-server:oie/server-lib/donkey/donkey-server.jar" \
-            "mirth-client:oie/client-lib/mirth-client.jar"; do
-            a="${pair%%:*}"; p="${pair#*:}"
-            mvn -q install:install-file -Dfile="$p" -DgroupId=com.mirth.connect -DartifactId="$a" -Dversion="$MC_VERSION" -Dpackaging=jar
-          done
+          OIE_DIST_CACHE: ${{ github.workspace }}/.oie-dist
+        run: ./scripts/install-engine-jars.sh
 
       - name: Build and test
         run: mvn -B -ntp clean verify

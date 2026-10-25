@@ -17,13 +17,13 @@
     <properties>
         <revision>1.5.0</revision>
 
-        <!-- Temporary: 1.5.0 targets OIE 4.7.0 but compiles against the 4.6.0 engine jars,
-             because 4.7.0 wasn't published when it shipped. The engine APIs oie-source-code-search
-             uses are the same in both (checked 2026-10-16). In the next release, set mc.version
-             to 4.7.0 and set this back to ${mc.version}. -->
-        <plugin.supported.mc.versions>4.7.0</plugin.supported.mc.versions>
+        <plugin.supported.mc.versions>${mc.version}</plugin.supported.mc.versions>
 
-        <mc.version>4.6.0</mc.version>
+        <mc.version>4.7.0</mc.version>
+        <!-- SHA-256 of the OIE distribution for mc.version (oie_unix_<version>.tar.gz), from
+             the release's sha256sums file. scripts/install-engine-jars.sh checks the download
+             against it before taking the engine jars from it. Update it with mc.version. -->
+        <oie.dist.sha256>ab08558873dc6be1e474afaacc46efe94d29c945cd3381c10d0ae548ecb429de</oie.dist.sha256>
         <javax-servlet.version>3.1.0</javax-servlet.version>
         <javax-rs-api.version>2.0.1</javax-rs-api.version>
         <xstream.version>1.4.20</xstream.version>
