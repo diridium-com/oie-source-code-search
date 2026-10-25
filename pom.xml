@@ -61,13 +61,6 @@
         <url>https://github.com/pacmano1/oie-source-code-search</url>
     </organization>
 
-    <repositories>
-        <repository>
-            <id>mirth-libs</id>
-            <url>https://repo.repsy.io/mvn/kpalang/mirthconnect</url>
-        </repository>
-    </repositories>
-
     <dependencies>
         <dependency>
             <groupId>com.mirth.connect</groupId>
