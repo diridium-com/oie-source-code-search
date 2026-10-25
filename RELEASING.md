@@ -22,7 +22,7 @@ The release workflow fails if any of them does not match the tag, or if `oie.jso
 git tag vX.Y.Z && git push origin vX.Y.Z
 ```
 
-`.github/workflows/release.yml` builds against the OIE distribution matching the POM's `mc.version` and stages a **draft** release holding the unsigned `oie-source-code-search-X.Y.Z.zip` and its `.sha256` sidecar. CI never publishes it.
+`.github/workflows/release.yml` builds and tests against the OIE distribution matching the POM's `mc.version` and stages a **draft** release holding the unsigned `oie-source-code-search-X.Y.Z.zip` and its `.sha256` sidecar. CI never publishes it. The build and tests run in a job whose token can only read the repository; a second job, the only one that can write, downloads the zip and creates or updates the draft.
 
 ## 3. Build the signed zip
 
